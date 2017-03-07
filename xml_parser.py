@@ -23,7 +23,7 @@ from xml.dom import minidom
 #TODO
 #Enter filenames as arguments
 #assert arguments assert len(sys.argv) == 3, "Error with number of argument : python extract-keyframe.py <video_path> <nframes>"
-#READ XGTF File
+#Change numeric strings to floats
 #Convert from frames to seconds on XGTF
 
 ######################################################################
@@ -97,12 +97,21 @@ for turn in trs_tree.xpath('//Section/Turn'):
 #Read XGTF file
 xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf")
 
-itemlist = xmldoc.getElementsByTagName('object')
+face_data_list = list()
+real_name_temp,framespan_temp,start_frame_temp,end_frame_temp = "","","",""
+datapoint_list_temp=list()
 
+#Process under some conditions
+name_known_boolean = False
+
+#Search for <object> attribute
+itemlist = xmldoc.getElementsByTagName('object')
 for item in itemlist:
     # Only process objects with name="Personne"
     if( item.attributes['name'].value == "PERSONNE"):
-        #print(item.attributes["framespan"].value)
+
+        #Get the framespan
+        framespan_temp = item.attributes["framespan"].value
 
         #Get attributes of each Object
         attribs = item.getElementsByTagName('attribute')
@@ -111,24 +120,42 @@ for item in itemlist:
             #Search for attribute NOM to get the name of the face coordinates
             if (attrib.attributes['name'].value == "NOM"):
                 data_item = attrib.getElementsByTagName("data:svalue")
+
                 #Search for first data item since only one data tag exists in this <attribute name="NOM"> tag
-                print(data_item[0].attributes["value"].value)
-
-            # Search for attribute TETE
-            if (attrib.attributes['name'].value == "TETE"):
-                print(attrib.attributes["name"].value)
-
+                #Exclude "Inconnu
+                if("Inconnu" not in data_item[0].attributes["value"].value):
+                    real_name_temp = data_item[0].attributes["value"].value
+                    name_known_boolean = True
 
 
-# process_object_boolean = False
-# #Traverse objects in XGTF file
-# for object_tag in xgtf_tree.xpath('//data'):
-#     print(object_tag)
-#     for key,value in object_tag.attrib.items():
-#         print(value)
-#
-#         #Only process objects with name="Personne"
-#         if (key == "name" and value =="PERSONNE"):
-#             process_object_boolean = True
-#             print(value)
+            if (name_known_boolean):
 
+                #Get start frame
+                if (attrib.attributes['name'].value == "STARTFRAME"):
+                    data_item = attrib.getElementsByTagName("data:dvalue")
+                    start_frame_temp = data_item[0].attributes["value"].value
+
+                # Get end frame
+                if (attrib.attributes['name'].value == "ENDFRAME"):
+                    data_item = attrib.getElementsByTagName("data:dvalue")
+                    end_frame_temp = data_item[0].attributes["value"].value
+
+                # Search for attribute TETE to extract polygon coordinates
+                if (attrib.attributes['name'].value == "TETE"):
+
+                    #Search for <data:polygon>
+                    data_item = attrib.getElementsByTagName("data:polygon")
+
+                    #Search for data:point
+                    data_points = data_item[0].getElementsByTagName("data:point")
+
+                    #Print data points
+                    for data_point in data_points:
+                        datapoint_list_temp.append([data_point.attributes["x"].value,data_point.attributes["y"].value])
+                        print(data_point.attributes["x"].value,data_point.attributes["y"].value)
+
+
+        face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,datapoint_list_temp])
+        datapoint_list_temp=list()
+
+print(face_data_list)

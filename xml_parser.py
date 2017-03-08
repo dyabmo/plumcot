@@ -117,7 +117,7 @@ for turn in trs_tree.xpath('//Section/Turn'):
 print("################# Speech turns from TRS file #####################")
 for item in speech_turn_list:
     print(item)
-#print(len(speech_turn_list))
+print(len(speech_turn_list))
 
 ######################################################################
 # Process XGTF file
@@ -224,3 +224,30 @@ print(len(face_data_list))
 
 #################################################################################
 #Now add face coordinates to speech turns
+#################################################################################
+
+face_speech_list = list()
+for speech_turn in speech_turn_list:
+
+    speaker_name = speech_turn[0]
+    begin_time = speech_turn[1]
+    end_time = speech_turn[2]
+    has_face_boolean = False
+    #talking_face_boolean=False
+
+    for item in face_data_list:
+
+        face_name = item[0]
+        time = item[1]
+        face_boundary_box = item[4]
+
+        #The speaker face capture time must have been during his speech, so that we get a talking face trainin point
+        if (speaker_name == face_name and time > begin_time and time < end_time ):
+
+            face_speech_list.append([speaker_name,time,begin_time,end_time,face_boundary_box])
+
+            has_face_boolean = True
+
+print("##################### Face-speech list ######################################")
+print(face_speech_list)
+print(len(face_speech_list))

@@ -23,14 +23,34 @@ from xml.dom import minidom
 #TODO
 #Enter filenames as arguments
 #assert arguments assert len(sys.argv) == 3, "Error with number of argument : python extract-keyframe.py <video_path> <nframes>"
-#Change numeric strings to floats
-#Convert from frames to seconds on XGTF: use idx file to know frame rate
 #Intersect TRS and XGTF
 #Use herve's tool for intersection
 
 #Set FrameRate for this file = 25, I have to verify this for other files
 #I may need to read idx file for each video to know frame rate
-frame_rate = 25
+frame_rate = 25.0
+
+#Function to create bounding box from polygon points
+def create_bounding_box(polygon_points):
+
+    x_min,x_max,y_min,y_max = 999.0, 0.0 ,999.0, 0.0
+
+    for point in polygon_points:
+
+        #process for x
+        if (point[0] < x_min ):
+            x_min = point[0]
+        if (point[0] > x_max):
+            x_max = point[0]
+
+        # process for y
+        if (point[1] < y_min):
+            y_min = point[1]
+        if (point[1] > y_max):
+            y_max = point[1]
+
+    return [[x_min,y_min ],[x_min,y_max],[x_max,y_min],[x_max,y_max]]
+
 ######################################################################
 # Process TRS file
 ######################################################################
@@ -60,7 +80,7 @@ for speaker in trs_tree.xpath('//Speakers/Speaker'):
 #Create a list of speech turns
 speech_turn_list = list()
 speaker_id_temp= ""
-startTime_temp,endTime_temp =0,0
+startTime_temp,endTime_temp =0.0,0.0
 update_list_boolean=False
 
 #Search for <Turn> tags
@@ -91,7 +111,7 @@ for turn in trs_tree.xpath('//Section/Turn'):
             real_name = speaker_id_name_dict[speaker_id_temp]
             speech_turn_list.append([real_name,startTime_temp,endTime_temp])
             speaker_id_temp = ""
-            startTime_temp, endTime_temp = 0, 0
+            startTime_temp, endTime_temp = 0.0, 0.0
 
 #Test
 print("################# Speech turns from TRS file #####################")
@@ -108,7 +128,7 @@ xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xg
 
 face_data_list = list()
 real_name_temp = ""
-framespan_temp,start_frame_temp,end_frame_temp = 0,0,0
+framespan_temp,start_frame_temp,end_frame_temp = 0.0,0.0,0.0
 datapoint_list_temp=list()
 
 #Process under some conditions
@@ -126,6 +146,10 @@ for item in itemlist:
         #If they are the same, store as float, else raise an exception
         if(framespan1 == framespan2):
             framespan_temp = float(framespan1)
+
+            # change frame number to seconds
+            framespan_temp = framespan_temp / frame_rate
+
         else:
             raise NotImplementedError
 
@@ -151,10 +175,17 @@ for item in itemlist:
                     data_item = attrib.getElementsByTagName("data:dvalue")
                     start_frame_temp = float(data_item[0].attributes["value"].value)
 
+                    #change frame number to seconds
+                    start_frame_temp = start_frame_temp/frame_rate
+
+
                 # Get end frame
                 if (attrib.attributes['name'].value == "ENDFRAME"):
                     data_item = attrib.getElementsByTagName("data:dvalue")
                     end_frame_temp = float(data_item[0].attributes["value"].value)
+
+                    # change frame number to seconds
+                    end_frame_temp = end_frame_temp / frame_rate
 
                 # Search for attribute TETE to extract polygon coordinates
                 if (attrib.attributes['name'].value == "TETE"):
@@ -170,13 +201,17 @@ for item in itemlist:
                         datapoint_list_temp.append([ float(data_point.attributes["x"].value),float(data_point.attributes["y"].value)])
                         #print(data_point.attributes["x"].value,data_point.attributes["y"].value)
 
+                    #Create bounding box from polygon points
+                    bounding_box = create_bounding_box(datapoint_list_temp)
+                    #print(bounding_box)
+
                     #Update the list then
-                    face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,datapoint_list_temp])
+                    face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,bounding_box])
 
                     #Reset the temporary values
                     datapoint_list_temp=list()
                     real_name_temp, framespan_temp = "", ""
-                    start_frame_temp, end_frame_temp = 0, 0
+                    start_frame_temp, end_frame_temp = 0.0,0.0
                     # Reset boolean after usage
                     name_known_boolean = False
 
@@ -185,3 +220,7 @@ print("################# Face data from XGTF file ####################")
 for item in face_data_list:
     print(item)
 print(len(face_data_list))
+
+
+#################################################################################
+#Now add face coordinates to speech turns

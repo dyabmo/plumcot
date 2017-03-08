@@ -24,8 +24,13 @@ from xml.dom import minidom
 #Enter filenames as arguments
 #assert arguments assert len(sys.argv) == 3, "Error with number of argument : python extract-keyframe.py <video_path> <nframes>"
 #Change numeric strings to floats
-#Convert from frames to seconds on XGTF
+#Convert from frames to seconds on XGTF: use idx file to know frame rate
+#Intersect TRS and XGTF
+#Use herve's tool for intersection
 
+#Set FrameRate for this file = 25, I have to verify this for other files
+#I may need to read idx file for each video to know frame rate
+frame_rate = 25
 ######################################################################
 # Process TRS file
 ######################################################################
@@ -54,7 +59,8 @@ for speaker in trs_tree.xpath('//Speakers/Speaker'):
 
 #Create a list of speech turns
 speech_turn_list = list()
-speaker_id_temp,startTime_temp,endTime_temp = "","",""
+speaker_id_temp= ""
+startTime_temp,endTime_temp =0,0
 update_list_boolean=False
 
 #Search for <Turn> tags
@@ -67,10 +73,10 @@ for turn in trs_tree.xpath('//Section/Turn'):
             update_list_boolean = True
 
         if (key == "startTime"):
-            startTime_temp = value
+            startTime_temp = float(value)
 
         if (key == "endTime"):
-            endTime_temp = value
+            endTime_temp = float(value)
 
     # Only update the list if a "speaker" tag exists, otherwise discard the update
     if (update_list_boolean):
@@ -84,10 +90,13 @@ for turn in trs_tree.xpath('//Section/Turn'):
             #Add speaker's real name instead of his/her ID
             real_name = speaker_id_name_dict[speaker_id_temp]
             speech_turn_list.append([real_name,startTime_temp,endTime_temp])
-            speaker_id_temp, startTime_temp, endTime_temp = "", "", ""
+            speaker_id_temp = ""
+            startTime_temp, endTime_temp = 0, 0
 
 #Test
-#print(speech_turn_list)
+print("################# Speech turns from TRS file #####################")
+for item in speech_turn_list:
+    print(item)
 #print(len(speech_turn_list))
 
 ######################################################################
@@ -98,7 +107,8 @@ for turn in trs_tree.xpath('//Section/Turn'):
 xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf")
 
 face_data_list = list()
-real_name_temp,framespan_temp,start_frame_temp,end_frame_temp = "","","",""
+real_name_temp = ""
+framespan_temp,start_frame_temp,end_frame_temp = 0,0,0
 datapoint_list_temp=list()
 
 #Process under some conditions
@@ -110,8 +120,14 @@ for item in itemlist:
     # Only process objects with name="Personne"
     if( item.attributes['name'].value == "PERSONNE"):
 
-        #Get the framespan
-        framespan_temp = item.attributes["framespan"].value
+        #Get the framespan, split on ":" and see if they are the same or not
+        framespan1,framespan2 = item.attributes["framespan"].value.split(":")
+
+        #If they are the same, store as float, else raise an exception
+        if(framespan1 == framespan2):
+            framespan_temp = float(framespan1)
+        else:
+            raise NotImplementedError
 
         #Get attributes of each Object
         attribs = item.getElementsByTagName('attribute')
@@ -133,12 +149,12 @@ for item in itemlist:
                 #Get start frame
                 if (attrib.attributes['name'].value == "STARTFRAME"):
                     data_item = attrib.getElementsByTagName("data:dvalue")
-                    start_frame_temp = data_item[0].attributes["value"].value
+                    start_frame_temp = float(data_item[0].attributes["value"].value)
 
                 # Get end frame
                 if (attrib.attributes['name'].value == "ENDFRAME"):
                     data_item = attrib.getElementsByTagName("data:dvalue")
-                    end_frame_temp = data_item[0].attributes["value"].value
+                    end_frame_temp = float(data_item[0].attributes["value"].value)
 
                 # Search for attribute TETE to extract polygon coordinates
                 if (attrib.attributes['name'].value == "TETE"):
@@ -151,11 +167,21 @@ for item in itemlist:
 
                     #Print data points
                     for data_point in data_points:
-                        datapoint_list_temp.append([data_point.attributes["x"].value,data_point.attributes["y"].value])
-                        print(data_point.attributes["x"].value,data_point.attributes["y"].value)
+                        datapoint_list_temp.append([ float(data_point.attributes["x"].value),float(data_point.attributes["y"].value)])
+                        #print(data_point.attributes["x"].value,data_point.attributes["y"].value)
 
+                    #Update the list then
+                    face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,datapoint_list_temp])
 
-        face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,datapoint_list_temp])
-        datapoint_list_temp=list()
+                    #Reset the temporary values
+                    datapoint_list_temp=list()
+                    real_name_temp, framespan_temp = "", ""
+                    start_frame_temp, end_frame_temp = 0, 0
+                    # Reset boolean after usage
+                    name_known_boolean = False
 
-print(face_data_list)
+print("###############################################################")
+print("################# Face data from XGTF file ####################")
+for item in face_data_list:
+    print(item)
+print(len(face_data_list))

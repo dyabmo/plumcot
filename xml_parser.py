@@ -8,8 +8,13 @@
 #
 #############################################################################
 
-#Argument 1 :
-#Argument 2 :
+#Argument 1 : <XGTF file path>
+#Argument 2 : <TRS file path>
+
+#Usage of xml_parser.py :
+# xml_parser.py <TRS file path> <XGTF file path>
+
+#TODO
 
 import sys
 from lxml import etree
@@ -17,14 +22,8 @@ from lxml import objectify
 from io import StringIO, BytesIO
 from xml.dom import minidom
 
-#Usage of xml_parser.py :
-
-
-#TODO
-#Enter filenames as arguments
-#assert arguments assert len(sys.argv) == 3, "Error with number of argument : python extract-keyframe.py <video_path> <nframes>"
-#Intersect TRS and XGTF
-#Use herve's tool for intersection
+#Assert argument
+assert len(sys.argv) == 3, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path>"
 
 #Set FrameRate for this file = 25, I have to verify this for other files
 #I may need to read idx file for each video to know frame rate
@@ -51,12 +50,17 @@ def create_bounding_box(polygon_points):
 
     return [[x_min,y_min ],[x_min,y_max],[x_max,y_min],[x_max,y_max]]
 
+#Read TRS file
+trs_tree  = etree.parse(sys.argv[1])
+#trs_tree  = etree.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs")
+#Read XGTF file
+
+#xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf")
+xmldoc = minidom.parse(sys.argv[2])
+
 ######################################################################
 # Process TRS file
 ######################################################################
-
-#Read TRS file
-trs_tree  = etree.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs")
 
 # Create new dictionary to add speaker ids as key and speaker names as value
 speaker_id_name_dict = {}
@@ -122,10 +126,6 @@ print(len(speech_turn_list))
 ######################################################################
 # Process XGTF file
 ######################################################################
-
-#Read XGTF file
-xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf")
-
 face_data_list = list()
 real_name_temp = ""
 framespan_temp,start_frame_temp,end_frame_temp = 0.0,0.0,0.0

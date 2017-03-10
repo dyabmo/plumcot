@@ -15,24 +15,31 @@
 # xml_parser.py <TRS file path> <XGTF file path>
 
 #TODO
+#use template like this to write file #Face track template:
+#FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
+#                 '{left:.3f} {top:.3f} {right:.3f} {bottom:.3f} '
+ #                '{status:s}\n')
+#FACE_TEMPLATE.format
+
+#Read face track file
+# Add exceptions for non existing files
 
 import sys
 from lxml import etree
 from lxml import objectify
 from io import StringIO, BytesIO
 from xml.dom import minidom
+import pandas as pd
 
 #Assert argument
 assert len(sys.argv) == 3, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path>"
 
-#Set FrameRate for this file = 25, I have to verify this for other files
-#I may need to read idx file for each video to know frame rate
-frame_rate = 25.0
-
 #Function to create bounding box from polygon points
 def create_bounding_box(polygon_points):
 
+    #left , right , top , bottom
     x_min,x_max,y_min,y_max = 999.0, 0.0 ,999.0, 0.0
+
 
     for point in polygon_points:
 
@@ -48,15 +55,61 @@ def create_bounding_box(polygon_points):
         if (point[1] > y_max):
             y_max = point[1]
 
-    return [[x_min,y_min ],[x_min,y_max],[x_max,y_min],[x_max,y_max]]
+    #Important: return as: left, top, right, bottom so as to be the same as face track file
+    return x_min,y_min,x_max,y_max
+    #return [[x_min,y_min ],[x_min,y_max],[x_max,y_min],[x_max,y_max]]
+
+###################################################################################
+# Read the input files
+###################################################################################
 
 #Read TRS file
-trs_tree  = etree.parse(sys.argv[1])
-#trs_tree  = etree.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs")
-#Read XGTF file
+trs_file  = etree.parse(sys.argv[1])
 
-#xmldoc = minidom.parse("/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf")
-xmldoc = minidom.parse(sys.argv[2])
+#Read XGTF file ( A different way than the former!)
+xgtf_file = minidom.parse(sys.argv[2])
+
+#Read face track file
+face_track_file = pd.read_csv('/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.track.txt', sep=" ", header = None)
+face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
+
+###################################################################################
+# Extract number of frames, frame rate, horizontal frame size, vertical frame size.
+###################################################################################
+#Set FrameRate constant to 25, then it's , then it's multipied by frame_rate value extracted from XGTF file
+#frame_rate_constant = 25.0
+frame_rate_constant = 25.0
+
+num_frames,frame_rate_ratio,h_frame_size,v_frame_size = 0,0.0,0,0
+#Go to <sourcefile>
+#       <file>
+#        <attribute>
+node_source_file= xgtf_file.getElementsByTagName('sourcefile')
+node_file_id = node_source_file[0].getElementsByTagName('file')
+node_attributes = node_file_id[0].getElementsByTagName('attribute')
+
+for item in node_attributes:
+    if(item.attributes["name"].value == "NUMFRAMES"):
+        node_numframes = item.getElementsByTagName('data:dvalue')
+        num_frames = int(node_numframes[0].attributes['value'].value)
+
+    if (item.attributes["name"].value == "FRAMERATE"):
+        node_numframes = item.getElementsByTagName('data:fvalue')
+        frame_rate_ratio = float(node_numframes[0].attributes['value'].value)
+
+    if (item.attributes["name"].value == "H-FRAME-SIZE"):
+        node_numframes = item.getElementsByTagName('data:dvalue')
+        h_frame_size = int(node_numframes[0].attributes['value'].value)
+
+    if (item.attributes["name"].value == "V-FRAME-SIZE"):
+        node_numframes = item.getElementsByTagName('data:dvalue')
+        v_frame_size = int(node_numframes[0].attributes['value'].value)
+
+#print(num_frames,frame_rate_ratio,h_frame_size,v_frame_size )
+
+#Frame rate is 25 * the ratio extracted from XGTF file
+frame_rate = frame_rate_ratio * frame_rate_constant
+#print(frame_rate)
 
 ######################################################################
 # Process TRS file
@@ -67,7 +120,7 @@ speaker_id_name_dict = {}
 id_temp,name_temp = "",""
 
 #Parse speaker IDs and names
-for speaker in trs_tree.xpath('//Speakers/Speaker'):
+for speaker in trs_file.xpath('//Speakers/Speaker'):
     for key,value in speaker.attrib.items():
 
         if(key=="id"):
@@ -88,7 +141,7 @@ startTime_temp,endTime_temp =0.0,0.0
 update_list_boolean=False
 
 #Search for <Turn> tags
-for turn in trs_tree.xpath('//Section/Turn'):
+for turn in trs_file.xpath('//Section/Turn'):
     for key,value in turn.attrib.items():
 
         if (key == "speaker"):
@@ -131,11 +184,11 @@ real_name_temp = ""
 framespan_temp,start_frame_temp,end_frame_temp = 0.0,0.0,0.0
 datapoint_list_temp=list()
 
-#Process under some conditions
+#Boolean used to process <object> node under some conditions
 name_known_boolean = False
 
 #Search for <object> attribute
-itemlist = xmldoc.getElementsByTagName('object')
+itemlist = xgtf_file.getElementsByTagName('object')
 for item in itemlist:
     # Only process objects with name="Personne"
     if( item.attributes['name'].value == "PERSONNE"):
@@ -202,11 +255,11 @@ for item in itemlist:
                         #print(data_point.attributes["x"].value,data_point.attributes["y"].value)
 
                     #Create bounding box from polygon points
-                    bounding_box = create_bounding_box(datapoint_list_temp)
+                    x_min, y_min, x_max, y_max = create_bounding_box(datapoint_list_temp)
                     #print(bounding_box)
 
                     #Update the list then
-                    face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,bounding_box])
+                    face_data_list.append([real_name_temp,framespan_temp,start_frame_temp,end_frame_temp,x_min, y_min, x_max, y_max])
 
                     #Reset the temporary values
                     datapoint_list_temp=list()
@@ -251,3 +304,15 @@ for speech_turn in speech_turn_list:
 print("##################### Face-speech list ######################################")
 print(face_speech_list)
 print(len(face_speech_list))
+
+######################################################################################
+# Process face track file
+######################################################################################
+#Face track template:
+#FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
+#                 '{left:.3f} {top:.3f} {right:.3f} {bottom:.3f} '
+ #                '{status:s}\n')
+#(left * frame_width)
+#        right = int(right * frame_width)
+#        top = int(top * frame_height)
+#        bottom = int(bottom * frame_height)

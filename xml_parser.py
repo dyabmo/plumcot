@@ -10,9 +10,10 @@
 
 #Argument 1 : <XGTF file path>
 #Argument 2 : <TRS file path>
+#Argument 3 : <Face track file path>
 
 #Usage of xml_parser.py :
-# xml_parser.py <TRS file path> <XGTF file path>
+# xml_parser.py <TRS file path> <XGTF file path> <Face track file path>
 
 #TODO
 #use template like this to write file #Face track template:
@@ -32,7 +33,7 @@ from xml.dom import minidom
 import pandas as pd
 
 #Assert argument
-assert len(sys.argv) == 3, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path>"
+assert len(sys.argv) == 4, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path>"
 
 #Function to create bounding box from polygon points
 def create_bounding_box(polygon_points):
@@ -70,7 +71,7 @@ trs_file  = etree.parse(sys.argv[1])
 xgtf_file = minidom.parse(sys.argv[2])
 
 #Read face track file
-face_track_file = pd.read_csv('/vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.track.txt', sep=" ", header = None)
+face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
 face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
 
 ###################################################################################
@@ -81,6 +82,7 @@ face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
 frame_rate_constant = 25.0
 
 num_frames,frame_rate_ratio,h_frame_size,v_frame_size = 0,0.0,0,0
+
 #Go to <sourcefile>
 #       <file>
 #        <attribute>
@@ -292,12 +294,12 @@ for speech_turn in speech_turn_list:
 
         face_name = item[0]
         time = item[1]
-        face_boundary_box = item[4]
+        x_min, y_min, x_max, y_max = item[4],item[5],item[6],item[7]
 
         #The speaker face capture time must have been during his speech, so that we get a talking face trainin point
         if (speaker_name == face_name and time > begin_time and time < end_time ):
 
-            face_speech_list.append([speaker_name,time,begin_time,end_time,face_boundary_box])
+            face_speech_list.append([speaker_name,time,begin_time,end_time,x_min, y_min, x_max, y_max])
 
             has_face_boolean = True
 
@@ -308,11 +310,13 @@ print(len(face_speech_list))
 ######################################################################################
 # Process face track file
 ######################################################################################
-#Face track template:
-#FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
-#                 '{left:.3f} {top:.3f} {right:.3f} {bottom:.3f} '
- #                '{status:s}\n')
-#(left * frame_width)
-#        right = int(right * frame_width)
-#        top = int(top * frame_height)
-#        bottom = int(bottom * frame_height)
+
+#Change face coordinates in frame from relative to absolute
+face_track_file['left'] = face_track_file['left'] * h_frame_size
+face_track_file['right'] = face_track_file['right'] * h_frame_size
+face_track_file['top'] = face_track_file['top'] * v_frame_size
+face_track_file['bottom'] = face_track_file['bottom'] * v_frame_size
+
+#Match coordinates from xgtf and Face track ...
+
+print(face_track_file)

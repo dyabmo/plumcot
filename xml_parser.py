@@ -22,8 +22,10 @@
  #                '{status:s}\n')
 #FACE_TEMPLATE.format
 
-#Read face track file
 # Add exceptions for non existing files
+#Check non implemented errors\
+#Add non-talking faces
+#Generate face frames from track id
 
 import sys
 from lxml import etree
@@ -31,6 +33,11 @@ from lxml import objectify
 from io import StringIO, BytesIO
 from xml.dom import minidom
 import pandas as pd
+import cv2
+import numpy as np
+from pyannote.video import Video
+import scipy.misc
+
 
 #Assert argument
 assert len(sys.argv) == 4, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path>"
@@ -74,11 +81,13 @@ xgtf_file = minidom.parse(sys.argv[2])
 face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
 face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
 
+#Read MPG video file to generate images from it
+video = Video(sys.argv[4])
+
 ###################################################################################
 # Extract number of frames, frame rate, horizontal frame size, vertical frame size.
 ###################################################################################
 #Set FrameRate constant to 25, then it's , then it's multipied by frame_rate value extracted from XGTF file
-#frame_rate_constant = 25.0
 frame_rate_constant = 25.0
 
 num_frames,frame_rate_ratio,h_frame_size,v_frame_size = 0,0.0,0,0
@@ -305,8 +314,6 @@ for speech_turn in speech_turn_list:
 
 print("##################### Face-speech list ######################################")
 print(face_speech_list)
-print(len(face_speech_list))
-
 ######################################################################################
 # Process face track file
 ######################################################################################
@@ -317,6 +324,59 @@ face_track_file['right'] = face_track_file['right'] * h_frame_size
 face_track_file['top'] = face_track_file['top'] * v_frame_size
 face_track_file['bottom'] = face_track_file['bottom'] * v_frame_size
 
-#Match coordinates from xgtf and Face track ...
+#Match coordinates from xgtf and Face track.
+#Match using time coordinate. Take care: there might be two faces at the same time, that's when I will need the face frame coordinates.
 
-print(face_track_file)
+#group time by ID, get its min and its max, search for time frame of xgtf file within.
+group_time_by_id=face_track_file[['time','id']].groupby('id',as_index=False)
+
+#Search for face tracks corresponding to each entry in "face_speech_list"
+#The purpose is to find one face track ID matching current entry of ""face_speech_list"
+
+############### TO BE SET TO ZER0
+##################################################
+
+dataset_generation_params = list()
+
+for face_speech_list_index in range(1,len(face_speech_list)):
+
+    #just for better readability
+    time_index = 1
+    facetracks_list=list()
+
+    #Search for each face track id in face track file
+    #If more than one ID is found, I need to match frame coordinates
+    for index in range (0,len(group_time_by_id)):
+
+        #frame time has to be between the min and max time of a face track
+        if(face_speech_list[face_speech_list_index][time_index] > group_time_by_id.min().ix[index]['time'] and
+           face_speech_list[face_speech_list_index][time_index] < group_time_by_id.max().ix[index]['time']):
+            print(group_time_by_id.min().ix[index]['id'])
+            facetracks_list.append(group_time_by_id.min().ix[index]['id'])
+
+    #Finished search for facetracks
+    #If they are more than 1, find the closest frame coordinate match frame coordinates
+    if(len(facetracks_list)>1):
+        raise NotImplementedError
+
+    face_track_id=int(facetracks_list[0])
+
+    #Now add Name, facetrack ID, boolean is speaking or not, to "dataset_generation_params"
+    name = face_speech_list[0]
+    is_talking = True
+    dataset_generation_params.append([ name,face_track_id,is_talking])
+
+#################################################################################
+#Generate frames from video capture
+
+face_track_file
+frame = cap2(222.64)
+print(frame.shape)
+#y, x
+
+#indexing= ymin,ymax.xmin,x max
+frame = frame[20:418 , 387:585]
+print(frame.shape)
+
+scipy.misc.imsave('outfile.jpg', frame)
+

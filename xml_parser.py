@@ -14,6 +14,10 @@
 
 #Usage of xml_parser.py :
 # xml_parser.py <TRS file path> <XGTF file path> <Face track file path>
+# xml_parser.py /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs
+#               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf
+#               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.track.txt
+#               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.MPG
 
 #TODO
 #use template like this to write file #Face track template:
@@ -40,7 +44,7 @@ import scipy.misc
 
 
 #Assert argument
-assert len(sys.argv) == 4, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path>"
+assert len(sys.argv) == 5, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path>"
 
 #Function to create bounding box from polygon points
 def create_bounding_box(polygon_points):
@@ -369,14 +373,18 @@ for face_speech_list_index in range(1,len(face_speech_list)):
 #################################################################################
 #Generate frames from video capture
 
-face_track_file
-frame = cap2(222.64)
-print(frame.shape)
-#y, x
 
-#indexing= ymin,ymax.xmin,x max
-frame = frame[20:418 , 387:585]
-print(frame.shape)
+print(face_track_file[face_track_file['id']==62])
 
-scipy.misc.imsave('outfile.jpg', frame)
+images_test = face_track_file[face_track_file['id']==62]
+for index in range(0,len(images_test)):
+
+    item = images_test.iloc[[index]]
+    frame = video(float(item['time']))
+
+    #indexing= ymin,ymax.xmin,x max
+    img = frame[int(item['top']):int(item['bottom']) , int(item['left']):int(item['right'])]
+    print(frame.shape)
+
+    scipy.misc.imsave('/vol/work1/dyab/frames_test/outfile'+str(index)+'.jpg', img)
 

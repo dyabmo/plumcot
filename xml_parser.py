@@ -11,30 +11,33 @@
 #Argument 1 : <XGTF file path>
 #Argument 2 : <TRS file path>
 #Argument 3 : <Face track file path>
+#Argument 4 : <Video file path>
 
-#Usage of xml_parser.py :
-# xml_parser.py <TRS file path> <XGTF file path> <Face track file path>
+#Usage:
+# xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <Video file path>
 # xml_parser.py /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.track.txt
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.MPG
 
 #TODO
+#Create numpy 3d array
+
 #use template like this to write file #Face track template:
 #FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
 #                 '{left:.3f} {top:.3f} {right:.3f} {bottom:.3f} '
  #                '{status:s}\n')
 #FACE_TEMPLATE.format
 
-# Add exceptions for non existing files
+#Use pickle for persistance later in read_files.py
+
+# Add exceptions for non existing files http://www.scipy-lectures.org/intro/language/exceptions.html
 #Check non implemented errors\
 #Add non-talking faces
 #Generate face frames from track id
 
 import sys
 from lxml import etree
-from lxml import objectify
-from io import StringIO, BytesIO
 from xml.dom import minidom
 import pandas as pd
 import cv2
@@ -42,6 +45,14 @@ import numpy as np
 from pyannote.video import Video
 import scipy.misc
 
+###################################################################################
+# Important parameters
+###################################################################################
+
+#Set FrameRate constant to 25, then it's , then it's multipied by frame_rate value extracted from XGTF file
+frame_rate_constant = 25.
+
+output_image_size = 128,128
 
 #Assert argument
 assert len(sys.argv) == 5, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path>"
@@ -50,7 +61,7 @@ assert len(sys.argv) == 5, "Error with number of argument : python xml_parser.py
 def create_bounding_box(polygon_points):
 
     #left , right , top , bottom
-    x_min,x_max,y_min,y_max = 999.0, 0.0 ,999.0, 0.0
+    x_min,x_max,y_min,y_max = 999., 0. ,999., 0.
 
 
     for point in polygon_points:
@@ -86,15 +97,14 @@ face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
 face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
 
 #Read MPG video file to generate images from it
+#Can't be picked ..
 video = Video(sys.argv[4])
 
 ###################################################################################
 # Extract number of frames, frame rate, horizontal frame size, vertical frame size.
 ###################################################################################
-#Set FrameRate constant to 25, then it's , then it's multipied by frame_rate value extracted from XGTF file
-frame_rate_constant = 25.0
 
-num_frames,frame_rate_ratio,h_frame_size,v_frame_size = 0,0.0,0,0
+num_frames,frame_rate_ratio,h_frame_size,v_frame_size = 0 , 0. , 0 , 0
 
 #Go to <sourcefile>
 #       <file>
@@ -152,7 +162,7 @@ for speaker in trs_file.xpath('//Speakers/Speaker'):
 #Create a list of speech turns
 speech_turn_list = list()
 speaker_id_temp= ""
-startTime_temp,endTime_temp =0.0,0.0
+startTime_temp,endTime_temp =0. , 0.
 update_list_boolean=False
 
 #Search for <Turn> tags
@@ -183,7 +193,7 @@ for turn in trs_file.xpath('//Section/Turn'):
             real_name = speaker_id_name_dict[speaker_id_temp]
             speech_turn_list.append([real_name,startTime_temp,endTime_temp])
             speaker_id_temp = ""
-            startTime_temp, endTime_temp = 0.0, 0.0
+            startTime_temp, endTime_temp = 0. , 0.
 
 #Test
 print("################# Speech turns from TRS file #####################")
@@ -196,7 +206,7 @@ print(len(speech_turn_list))
 ######################################################################
 face_data_list = list()
 real_name_temp = ""
-framespan_temp,start_frame_temp,end_frame_temp = 0.0,0.0,0.0
+framespan_temp,start_frame_temp,end_frame_temp = 0. , 0. , 0.
 datapoint_list_temp=list()
 
 #Boolean used to process <object> node under some conditions
@@ -279,7 +289,7 @@ for item in itemlist:
                     #Reset the temporary values
                     datapoint_list_temp=list()
                     real_name_temp, framespan_temp = "", ""
-                    start_frame_temp, end_frame_temp = 0.0,0.0
+                    start_frame_temp, end_frame_temp = 0. , 0.
                     # Reset boolean after usage
                     name_known_boolean = False
 
@@ -366,25 +376,38 @@ for face_speech_list_index in range(1,len(face_speech_list)):
     face_track_id=int(facetracks_list[0])
 
     #Now add Name, facetrack ID, boolean is speaking or not, to "dataset_generation_params"
+    #Must incorporate speaking time too ...
     name = face_speech_list[0]
     is_talking = True
     dataset_generation_params.append([ name,face_track_id,is_talking])
 
 #################################################################################
-#Generate frames from video capture
+#Generate frames from video capture for one id as a test, must
 
+#print(face_track_file[face_track_file['id']==62])
 
-print(face_track_file[face_track_file['id']==62])
-
+#Extract only the part of face_track_file belonging to a certain id that we identified as talking-face
 images_test = face_track_file[face_track_file['id']==62]
+
+#Loop on each frame in that extracted part
 for index in range(0,len(images_test)):
 
     item = images_test.iloc[[index]]
+
+    #Get frame using
     frame = video(float(item['time']))
 
+    #Crop the face coordinates from the frame
     #indexing= ymin,ymax.xmin,x max
     img = frame[int(item['top']):int(item['bottom']) , int(item['left']):int(item['right'])]
-    print(frame.shape)
 
-    scipy.misc.imsave('/vol/work1/dyab/frames_test/outfile'+str(index)+'.jpg', img)
+    #Save the cropped image
+    #scipy.misc.imsave('/vol/work1/dyab/frames_test/outfile'+str(index)+'.jpg', img)
+    scipy.misc.imsave('outfile' + str(index) + '.jpg', img)
+    img = scipy.misc.imresize(img,size)
+    np.save('outfile' + str(index) + '.npy', img)
+    print(img.shape)
 
+#print(np.load('outfile0.npy'))
+
+print(np.load('outfile0.npy').shape)

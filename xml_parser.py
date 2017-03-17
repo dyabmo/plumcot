@@ -11,8 +11,6 @@
 ###################################################################################
 #TODO
 ###################################################################################
-#Create numpy 3d array
-
 #use template like this to write file #Face track template:
 #FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
 #                 '{left:.3f} {top:.3f} {right:.3f} {bottom:.3f} '
@@ -20,11 +18,7 @@
 #FACE_TEMPLATE.format
 
 #Use pickle for persistance later in read_files.py
-
-# Add exceptions for non existing files http://www.scipy-lectures.org/intro/language/exceptions.html
-#Check non implemented errors\
 #Add non-talking faces
-#Generate face frames from track id
 
 ###################################################################################
 #Usage:
@@ -102,19 +96,34 @@ def create_bounding_box(polygon_points):
 # Read the input files
 ###################################################################################
 
-#Read TRS file
-trs_file  = etree.parse(sys.argv[1])
+try:
+    #Read TRS file
+    trs_file  = etree.parse(sys.argv[1])
+except:
+    print("Error reading TRS file ")
 
-#Read XGTF file ( A different way than the former!)
-xgtf_file = minidom.parse(sys.argv[2])
+try:
+    #Read XGTF file ( A different way than the former!)
+    xgtf_file = minidom.parse(sys.argv[2])
 
-#Read face track file
-face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
-face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
+except:
+    print("Error reading XGTF file")
 
-#Read MPG video file to generate images from it
-#Can't be picked ..
-video = Video(sys.argv[4])
+try:
+    #Read face track file
+    face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
+    face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
+
+except:
+    print("Error reading Face track file")
+
+try:
+    #Read MPG video file to generate images from it
+    #Can't be pickled ..
+    video = Video(sys.argv[4])
+
+except:
+    print("Error reading Video file ")
 
 #Extract video id from video file path argument
 video_id = sys.argv[4].split('/')[-1].split('.')[0]
@@ -217,7 +226,7 @@ for turn in trs_file.xpath('//Section/Turn'):
 print("################# Speech turns from TRS file #####################")
 for item in speech_turn_list:
     print(item)
-print(len(speech_turn_list))
+print("Size: "+str(len(speech_turn_list)))
 
 ######################################################################
 # Process XGTF file
@@ -247,7 +256,7 @@ for item in itemlist:
             framespan_temp = framespan_temp / frame_rate
 
         else:
-            raise NotImplementedError
+            raise NotImplementedError("XGTF unusual file format")
 
         #Get attributes of each Object
         attribs = item.getElementsByTagName('attribute')
@@ -315,7 +324,7 @@ print("###############################################################")
 print("################# Face data from XGTF file ####################")
 for item in face_data_list:
     print(item)
-print(len(face_data_list))
+print("Size: "+str(len(face_data_list)))
 
 
 #################################################################################
@@ -335,17 +344,24 @@ for speech_turn in speech_turn_list:
 
         face_name = item[0]
         time = item[1]
+        appearance_start_time,appearance_end_time = item[2],item[3]
         x_min, y_min, x_max, y_max = item[4],item[5],item[6],item[7]
 
-        #The speaker face capture time must have been during his speech, so that we get a talking face trainin point
-        if (speaker_name == face_name and time > begin_time and time < end_time ):
+        if (speaker_name == face_name):
 
-            face_speech_list.append([speaker_name,time,begin_time,end_time,x_min, y_min, x_max, y_max])
+            # The speaker face capture time must have been during his speech, so that we get a talking face trainin point
+            #Another case is that the speaker's duration of talking is included in his appearance duration in XGTF file)
+            if( (time > begin_time and time < end_time) or
+                (begin_time > appearance_start_time and end_time < appearance_end_time) ):
 
-            has_face_boolean = True
+                face_speech_list.append([speaker_name,time,begin_time,end_time,x_min, y_min, x_max, y_max])
+                has_face_boolean = True
 
+print("#"*65)
 print("##################### Face-speech list ######################################")
-print(face_speech_list)
+for item in face_speech_list:
+    print(item)
+print("Size: "+str(len(face_speech_list)))
 ######################################################################################
 # Process face track file
 ######################################################################################
@@ -413,7 +429,11 @@ for face_speech_list_index in range(0,len(face_speech_list)):
     is_talking = 1
     dataset_generation_params.append([ name,face_track_id,is_talking])
 
-print(dataset_generation_params)
+print("#"*65)
+print("##################### Generated Dataset ######################################")
+for item in dataset_generation_params:
+    print(item)
+print("Size: "+str(len(dataset_generation_params)))
 #################################################################################
 #Generate frames from video capture for each element in "dataset_generation_params"
 #################################################################################

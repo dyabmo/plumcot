@@ -337,8 +337,6 @@ for speech_turn in speech_turn_list:
     speaker_name = speech_turn[0]
     begin_time = speech_turn[1]
     end_time = speech_turn[2]
-    has_face_boolean = False
-    #talking_face_boolean=False
 
     for item in face_data_list:
 
@@ -349,13 +347,30 @@ for speech_turn in speech_turn_list:
 
         if (speaker_name == face_name):
 
+
             # The speaker face capture time must have been during his speech, so that we get a talking face trainin point
             #Another case is that the speaker's duration of talking is included in his appearance duration in XGTF file)
             if( (time > begin_time and time < end_time) or
                 (begin_time > appearance_start_time and end_time < appearance_end_time) ):
 
-                face_speech_list.append([speaker_name,time,begin_time,end_time,x_min, y_min, x_max, y_max])
-                has_face_boolean = True
+                #Handle special case if empty list
+                if(len(face_speech_list) == 0):
+                    face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max])
+                    face_speech_list[0].append([begin_time, end_time])
+
+                #If name already exists, append the talking time, else: create new entry
+                else:
+                    name_found=False
+                    for i in range(0,len(face_speech_list)):
+                        if ( speaker_name == face_speech_list[i][0] ):
+                            name_found = True
+                            #ADD time intervarls to the last appended element in the list
+                            face_speech_list[i].append([begin_time,end_time])
+
+                    if(not name_found):
+                        face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max])
+                        face_speech_list[-1].append([begin_time, end_time])
+                        name_found=False
 
 print("#"*65)
 print("##################### Face-speech list ######################################")
@@ -386,7 +401,7 @@ dataset_generation_params = list()
 for face_speech_list_index in range(0,len(face_speech_list)):
 
     #just for better readability
-    time_index, x_min_index, y_min_index, x_max_index, y_max_index  = 1 ,4, 5, 6, 7
+    time_index, x_min_index, y_min_index, x_max_index, y_max_index  = 1 ,2, 3, 4, 5
 
     #List containing face track IDs that are present at the same time frame of face_speech_list
     facetracks_list=list()
@@ -425,23 +440,19 @@ for face_speech_list_index in range(0,len(face_speech_list)):
 
     #Now add Name, facetrack ID, boolean is speaking or not, to "dataset_generation_params"
     #Must incorporate speaking time too ...
-    name = face_speech_list[face_speech_list_index][0]
-    is_talking = 1
-    dataset_generation_params.append([ name,face_track_id,is_talking])
+    face_speech_list[face_speech_list_index].append(int(face_track_id))
 
-print("#"*65)
-print("##################### Generated Dataset ######################################")
-for item in dataset_generation_params:
+for item in face_speech_list:
     print(item)
-print("Size: "+str(len(dataset_generation_params)))
+
 #################################################################################
 #Generate frames from video capture for each element in "dataset_generation_params"
 #################################################################################
 
-for item in dataset_generation_params:
+for item in face_speech_list:
 
-    face_track_id = item[1]
-    is_talking = item[2]
+    face_track_id = item[-1]
+    #is_talking = item[2]
 
     # Extract only the part of face_track_file belonging to a certain id that we identified as talking-face
     images_test = face_track_file[face_track_file['id']==face_track_id]
@@ -474,7 +485,8 @@ for item in dataset_generation_params:
 
         #Add the image to numpy array
         Xv[index,:,:,:] = img
-        Y[index] = is_talking
+
+        Y[index] = 1#is_talking
 
         #Save the cropped image
         scipy.misc.imsave('outfile' + str(index) + '.jpg', img)

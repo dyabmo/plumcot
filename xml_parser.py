@@ -355,8 +355,8 @@ for speech_turn in speech_turn_list:
 
                 #Handle special case if empty list
                 if(len(face_speech_list) == 0):
-                    face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max])
-                    face_speech_list[0].append([begin_time, end_time])
+                    face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max,list()])
+                    face_speech_list[0][-1].append([begin_time, end_time])
 
                 #If name already exists, append the talking time, else: create new entry
                 else:
@@ -365,11 +365,11 @@ for speech_turn in speech_turn_list:
                         if ( speaker_name == face_speech_list[i][0] ):
                             name_found = True
                             #ADD time intervarls to the last appended element in the list
-                            face_speech_list[i].append([begin_time,end_time])
+                            face_speech_list[i][-1].append([begin_time,end_time])
 
                     if(not name_found):
-                        face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max])
-                        face_speech_list[-1].append([begin_time, end_time])
+                        face_speech_list.append([speaker_name, time, x_min, y_min, x_max, y_max,list()])
+                        face_speech_list[-1][-1].append([begin_time, end_time])
                         name_found=False
 
 print("#"*65)
@@ -449,9 +449,9 @@ for item in face_speech_list:
 #Generate frames from video capture for each element in "dataset_generation_params"
 #################################################################################
 
-for item in face_speech_list:
+for item_anothername in face_speech_list:
 
-    face_track_id = item[-1]
+    face_track_id = item_anothername[-1]
     #is_talking = item[2]
 
     # Extract only the part of face_track_file belonging to a certain id that we identified as talking-face
@@ -466,6 +466,7 @@ for item in face_speech_list:
 
     #Y contains a 1 - dimensionaL numpy array(n_samples) containing the groundtruth label
     # (0 for not -talking, 1 for talking)
+    #default is not talking
     Y = np.zeros(image_frames_number)
 
     #Loop on each frame in that extracted part
@@ -474,7 +475,8 @@ for item in face_speech_list:
         item = images_test.iloc[[index]]
 
         #Get frame using
-        frame = video(float(item['time']))
+        frame_time = float(item['time'])
+        frame = video(frame_time)
 
         #Crop the face coordinates from the frame
         #indexing= ymin,ymax.xmin,x max
@@ -486,7 +488,11 @@ for item in face_speech_list:
         #Add the image to numpy array
         Xv[index,:,:,:] = img
 
-        Y[index] = 1#is_talking
+        #Add true boolean only for frames withing talking rance
+        for item_time in item_anothername[6]:
+            if(frame_time <= item_time[1] and frame_time >= item_time[0]   ):
+                Y[index] = 1#is_talking
+
 
         #Save the cropped image
         scipy.misc.imsave('outfile' + str(index) + '.jpg', img)
@@ -494,7 +500,7 @@ for item in face_speech_list:
     #Save Xv after the loop ends and all frames are added
     np.save(video_id +'.'+ str(face_track_id) + '.Xv.npy', Xv)
     np.save(video_id + '.' + str(face_track_id) + '.Y.npy', Y)
-    print(Xv.shape)
+    #print(Xv.shape)
     #print(Xv)
-    print(Y.shape)
-    #print(Y)
+    #print(Y.shape)
+    print(Y)

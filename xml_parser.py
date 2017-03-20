@@ -11,9 +11,6 @@
 ###################################################################################
 #TODO
 ###################################################################################
-##The problem is that there might be more than one face track for the same person, as a result of
-#face tracking module, so the solution is to match a set of face tracks to a person, not just one face track
-
 #Add face landmarks, make sure it's a square
 
 #Annotate the video with a cool speaking sprite ..
@@ -76,6 +73,8 @@ tolerance_seconds=1
 
 #Not important.. just for readability
 last_element=-1
+
+debug=False
 ###################################################################################
 # Assert argument
 ###################################################################################
@@ -364,7 +363,6 @@ for speech_turn in speech_turn_list:
 
         if (speaker_name == face_name):
 
-
             # The speaker face capture time must have been during his speech, so that we get a talking face trainin point
             #Another case is that the speaker's duration of talking is included in his appearance duration in XGTF file)
             if( (time > begin_time and time < end_time) or
@@ -433,7 +431,8 @@ for face_speech_list_index in range(0,len(face_speech_list)):
         if(face_speech_list[face_speech_list_index][time_index] > group_time_by_id.min().ix[index]['time'] and
            face_speech_list[face_speech_list_index][time_index] < group_time_by_id.max().ix[index]['time']):
             facetracks_list.append(group_time_by_id.min().ix[index]['id'])
-            print(group_time_by_id.min().ix[index]['id'])
+
+            if(debug): print(group_time_by_id.min().ix[index]['id'])
 
         #The previous assumption might not work for every facetrack because one person might have several
         #facetracks in sequence, so we try to match XGTF file time interval with facetrack time interval
@@ -441,7 +440,8 @@ for face_speech_list_index in range(0,len(face_speech_list)):
         elif(face_speech_list[face_speech_list_index][start_time] < group_time_by_id.min().ix[index]['time'] and
            face_speech_list[face_speech_list_index][end_time] > group_time_by_id.max().ix[index]['time']):
             facetracks_list.append(group_time_by_id.min().ix[index]['id'])
-            print("after relaxing assumption:"+str(group_time_by_id.min().ix[index]['id']))
+
+            if (debug): print("after relaxing assumption:"+str(group_time_by_id.min().ix[index]['id']))
 
     #=====================================
     #Finished searching for facetracks
@@ -465,7 +465,8 @@ for face_speech_list_index in range(0,len(face_speech_list)):
                               abs(face_speech_list[face_speech_list_index][y_min_index] - float(group_by_id[group_by_id['id'] == item]['top'] ))  + \
                               abs(face_speech_list[face_speech_list_index][x_max_index] - float(group_by_id[group_by_id['id'] == item]['right'])) + \
                               abs(face_speech_list[face_speech_list_index][y_max_index] - float(group_by_id[group_by_id['id'] == item]['bottom']))
-            print("Tolerance: ",str(temp_difference))
+
+            if (debug): print("Tolerance: ",str(temp_difference))
 
             #Add face track ID whenever it's within the frame tolerance
             if(temp_difference < frame_error_tolerance):
@@ -524,7 +525,7 @@ for face_speech_item in face_speech_list:
             Xv[index,:,:,:] = img
 
             #Add TRUE boolean only for frames withing talking-face
-            #Indexs 6 contains the list of talking time intervals
+            #Indexs 8 contains the list of talking time intervals
             for item_time in face_speech_item[8]:
                 if(frame_time <= item_time[1] and frame_time >= item_time[0]   ):
                     Y[index] = 1
@@ -535,7 +536,8 @@ for face_speech_item in face_speech_list:
         #Save Xv after the loop ends and all frames are added
         np.save(video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
         np.save(video_id + '.' + str(face_track_id_item) + '.Y.npy', Y)
-        #print(Xv.shape)
-        #print(Xv)
-        #print(Y.shape)
+        if (debug):
+            print(Xv.shape)
+            print(Xv)
+            print(Y.shape)
         print(Y)

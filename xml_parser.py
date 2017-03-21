@@ -11,11 +11,13 @@
 ###################################################################################
 #TODO
 ###################################################################################
-#Add face landmarks, make sure it's a square
+#Add face landmarks, make sure it's a square, what is the format of landmark file!
 
 #Annotate the video with a cool speaking sprite ..
 
 #Put them in some functions
+
+#put outputs in working directory
 
 #use template like this to write file #Face track template:
 #FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
@@ -336,7 +338,7 @@ for item in itemlist:
                     # Reset boolean after usage
                     name_known_boolean = False
 
-print("###############################################################")
+print("#"*100)
 print("################# Face data from XGTF file ####################")
 for item in xgtf_data_list:
     print(item)
@@ -531,7 +533,7 @@ for face_speech_item in face_speech_list:
                     Y[index] = 1
 
             #Save the cropped image
-            #scipy.misc.imsave('outfile' + str(index) + '.jpg', img)
+            if (debug): scipy.misc.imsave('outfile' + str(index) + '.jpg', img)
 
         #Save Xv after the loop ends and all frames are added
         np.save(video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)

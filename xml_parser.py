@@ -12,6 +12,7 @@
 #TODO
 ###################################################################################
 #Add face landmarks, make sure it's a square, what is the format of landmark file!
+#Create bounding box from face landmark points
 
 #Annotate the video with a cool speaking sprite ..
 
@@ -34,12 +35,14 @@
 #Argument 2 : <XGTF file path>
 #Argument 3 : <Face track file path>
 #Argument 4 : <Video file path>
+#Argument 5 : <Face landmark file path>
 
 # xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <Video file path>
 # xml_parser.py /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.trs
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.xgtf
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.track.txt
 #               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.MPG
+#               /vol/work1/dyab/BFMTV_CultureEtVous_2012-04-16_065040.landmarks.txt
 
 
 ###################################################################################
@@ -81,10 +84,11 @@ debug=False
 # Assert argument
 ###################################################################################
 
-assert len(sys.argv) == 5, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path>"
+assert len(sys.argv) == 6, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path> <Face landmark file path>"
 
 ###################################################################################
 # Function to create bounding box from polygon points
+# Can be used for either XGTF polygon points or facial landmarks points
 ###################################################################################
 def create_bounding_box(polygon_points):
 
@@ -145,6 +149,16 @@ except:
 
 #Extract video id from video file path argument
 video_id = sys.argv[4].split('/')[last_element].split('.')[0]
+
+try:
+    #Read face track file
+    #face_landmarks_file = pd.read_csv(sys.argv[5], sep=" ", header = None)
+    face_landmarks_file = np.loadtxt(sys.argv[5])
+    #face_landmarks_file.columns = ["time", "id"]
+
+except:
+    print("Error reading Face landmarks file")
+
 ###################################################################################
 # Extract number of frames, frame rate, horizontal frame size, vertical frame size.
 ###################################################################################
@@ -482,6 +496,37 @@ for item in face_speech_list:
     print(item)
 
 #################################################################################
+# Get bounding box from face landmarks
+#################################################################################
+
+#multiply each x with width, each y with height
+
+face_landmarks_list = list()
+print(face_landmarks_file)
+
+print(face_landmarks_file[0,2:])
+
+for item in face_landmarks_file:
+
+    # Create bounding box from polygon points
+    #Put the points in a form of a list to be processed by create_bounding_box()
+    #Also scale
+    points_list = list()
+    coordinates = item[2:]
+    for i in range(0, len(coordinates) , 2):
+
+        real_x = coordinates[i] * v_frame_size
+        real_y = coordinates[i+1] * h_frame_size
+        points_list.append([real_x,real_y])
+
+    print(points_list)
+    x_min, y_min, x_max, y_max = create_bounding_box(points_list)
+    print(x_min, y_min, x_max, y_max)
+    #face_landmarks_list.append(float(item['time']),int(item['id']))
+    face_landmarks_list.append([item[0], item[1], x_min, y_min, x_max, y_max ])
+
+
+#################################################################################
 #Generate training set as Xv.npy and Y.npy
 #################################################################################
 
@@ -542,4 +587,4 @@ for face_speech_item in face_speech_list:
             print(Xv.shape)
             print(Xv)
             print(Y.shape)
-        print(Y)
+        #print(Y)

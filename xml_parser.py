@@ -71,10 +71,10 @@ output_image_size_width  = 128
 channels_number = 3
 
 #Frame error tolerance: when there are several facetracks for the same person
-frame_error_tolerance = 100.  # By experimentation
+frame_error_tolerance = 400.  # By experimentation
 
 #Tolerance for time comparison
-tolerance_seconds=1
+tolerance_seconds=0.5
 
 #Not important.. just for readability
 last_element=-1
@@ -112,7 +112,6 @@ def create_bounding_box(polygon_points):
 
     #Important: return as: left, top, right, bottom so as to be the same as face track file
     return x_min,y_min,x_max,y_max
-    #return [[x_min,y_min ],[x_min,y_max],[x_max,y_min],[x_max,y_max]]
 
 ###################################################################################
 # Read the input files
@@ -453,8 +452,8 @@ for face_speech_list_index in range(0,len(face_speech_list)):
         #The previous assumption might not work for every facetrack because one person might have several
         #facetracks in sequence, so we try to match XGTF file time interval with facetrack time interval
         #If facetrack time interval is withing XGTF time interval along with some tolerance, add the face track
-        elif(face_speech_list[face_speech_list_index][start_time] < group_time_by_id.min().ix[index]['time'] and
-           face_speech_list[face_speech_list_index][end_time] > group_time_by_id.max().ix[index]['time']):
+        elif((face_speech_list[face_speech_list_index][start_time] ) <= group_time_by_id.min().ix[index]['time'] and
+                 (face_speech_list[face_speech_list_index][end_time]) >= group_time_by_id.max().ix[index]['time']):
             facetracks_list.append(group_time_by_id.min().ix[index]['id'])
 
             if (debug): print("after relaxing assumption:"+str(group_time_by_id.min().ix[index]['id']))
@@ -463,6 +462,7 @@ for face_speech_list_index in range(0,len(face_speech_list)):
     #Finished searching for facetracks
     #=======================================
 
+    print(facetracks_list)
     if(len(facetracks_list)==1):
         face_speech_list[face_speech_list_index][last_element].append(int(facetracks_list[0]))
 
@@ -482,7 +482,8 @@ for face_speech_list_index in range(0,len(face_speech_list)):
                               abs(face_speech_list[face_speech_list_index][x_max_index] - float(group_by_id[group_by_id['id'] == item]['right'])) + \
                               abs(face_speech_list[face_speech_list_index][y_max_index] - float(group_by_id[group_by_id['id'] == item]['bottom']))
 
-            if (debug): print("Tolerance: ",str(temp_difference))
+            #if (debug):
+            print("Difference: ",str(temp_difference))
 
             #Add face track ID whenever it's within the frame tolerance
             if(temp_difference < frame_error_tolerance):
@@ -499,12 +500,7 @@ for item in face_speech_list:
 # Get bounding box from face landmarks
 #################################################################################
 
-#multiply each x with width, each y with height
-
-face_landmarks_list = list()
-print(face_landmarks_file)
-
-print(face_landmarks_file[0,2:])
+face_landmarks_dataframe = pd.DataFrame(columns = ["time", "id","left", "top","right","bottom"])
 
 for item in face_landmarks_file:
 
@@ -519,12 +515,14 @@ for item in face_landmarks_file:
         real_y = coordinates[i+1] * h_frame_size
         points_list.append([real_x,real_y])
 
-    print(points_list)
     x_min, y_min, x_max, y_max = create_bounding_box(points_list)
-    print(x_min, y_min, x_max, y_max)
-    #face_landmarks_list.append(float(item['time']),int(item['id']))
-    face_landmarks_list.append([item[0], item[1], x_min, y_min, x_max, y_max ])
 
+    item_to_append = pd.Series([item[0], item[1],x_min, y_min, x_max, y_max],index=["time", "id","left", "top","right","bottom"])
+    face_landmarks_dataframe = face_landmarks_dataframe.append(item_to_append,ignore_index=True)
+
+if debug:
+    print(face_landmarks_dataframe)
+    print (len(face_landmarks_dataframe))
 
 #################################################################################
 #Generate training set as Xv.npy and Y.npy
@@ -537,9 +535,13 @@ for face_speech_item in face_speech_list:
 
     # For each face track ID in our entry
     for face_track_id_item in face_track_id_list:
+
         # Extract only the part of face_track_file belonging to a certain id that we identified as talking-face
         facetrack_id_frames = face_track_file[face_track_file['id'] == face_track_id_item]
 
+        # Extract only the part of face_landmarks_dataframe belonging to a certain id that we identified as talking-face
+        facelandmarks_id_frames = face_landmarks_dataframe[face_landmarks_dataframe['id'] == face_track_id_item]
+        print(facelandmarks_id_frames)
         #Number of frames in this facetrack ID
         image_frames_size = len(facetrack_id_frames)
 
@@ -557,9 +559,20 @@ for face_speech_item in face_speech_list:
 
             item = facetrack_id_frames.iloc[[index]]
 
-            #Get frame using
+            #Accessing it with time id is more accurate
+            #Landmakrs file might be shorter than face track file, so some time entries might not exist!
+            face_landmark_item = facelandmarks_id_frames[facelandmarks_id_frames['time'] == float(item['time'])]
+
+            #Get frame using time
             frame_time = float(item['time'])
             frame = video(frame_time)
+
+            if ( len(face_landmark_item) > 0):
+                # Just to remove unneeded duplicates
+                face_landmark_item = face_landmark_item.iloc[[0]]
+                imglandmark = frame[ int(face_landmark_item['left']):int(face_landmark_item['right']),int(face_landmark_item['top']):int(face_landmark_item['bottom'])]
+                scipy.misc.imsave('outfile' + str(face_track_id_item) +'.' +str(index) +'.' + 'landmark'+'.jpg', imglandmark)
+
 
             #Crop the face coordinates from the frame
             #indexing= ymin,ymax.xmin,x max
@@ -578,7 +591,7 @@ for face_speech_item in face_speech_list:
                     Y[index] = 1
 
             #Save the cropped image
-            if (debug): scipy.misc.imsave('outfile' + str(index) + '.jpg', img)
+            scipy.misc.imsave('outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
 
         #Save Xv after the loop ends and all frames are added
         np.save(video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
@@ -587,4 +600,4 @@ for face_speech_item in face_speech_list:
             print(Xv.shape)
             print(Xv)
             print(Y.shape)
-        #print(Y)
+        print(Y)

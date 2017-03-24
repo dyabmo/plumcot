@@ -134,6 +134,7 @@ try:
     #Read face track file
     face_track_file = pd.read_csv(sys.argv[3], sep=" ", header = None)
     face_track_file.columns = ["time", "id", "left", "top","right","bottom","state"]
+    face_track_file["state"]=0
 
 except:
     print("Error reading Face track file")
@@ -541,7 +542,7 @@ for face_speech_item in face_speech_list:
 
         # Extract only the part of face_landmarks_dataframe belonging to a certain id that we identified as talking-face
         facelandmarks_id_frames = face_landmarks_dataframe[face_landmarks_dataframe['id'] == face_track_id_item]
-        print(facelandmarks_id_frames)
+
         #Number of frames in this facetrack ID
         image_frames_size = len(facetrack_id_frames)
 
@@ -571,7 +572,7 @@ for face_speech_item in face_speech_list:
                 # Just to remove unneeded duplicates
                 face_landmark_item = face_landmark_item.iloc[[0]]
                 imglandmark = frame[ int(face_landmark_item['left']):int(face_landmark_item['right']),int(face_landmark_item['top']):int(face_landmark_item['bottom'])]
-                scipy.misc.imsave('outfile' + str(face_track_id_item) +'.' +str(index) +'.' + 'landmark'+'.jpg', imglandmark)
+                #scipy.misc.imsave('/vol/work1/dyab/frame_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) +'.' + 'landmark'+'.jpg', imglandmark)
 
 
             #Crop the face coordinates from the frame
@@ -589,15 +590,18 @@ for face_speech_item in face_speech_list:
             for item_time in face_speech_item[8]:
                 if(frame_time <= item_time[1] and frame_time >= item_time[0]   ):
                     Y[index] = 1
+                    face_track_file[ ['id'] == face_track_id_item and ['time'] == item['time'] ]['state'] = 1
+
 
             #Save the cropped image
-            scipy.misc.imsave('outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
+            #scipy.misc.imsave('/vol/work1/dyab/frame_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
 
         #Save Xv after the loop ends and all frames are added
-        np.save(video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
-        np.save(video_id + '.' + str(face_track_id_item) + '.Y.npy', Y)
+        #np.save("/vol/work1/dyab/training_set/"+ video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
+        #np.save("/vol/work1/dyab/training_set/"+ video_id + '.' + str(face_track_id_item) + '.Y.npy', Y)
         if (debug):
             print(Xv.shape)
             print(Xv)
             print(Y.shape)
-        print(Y)
+        #print(Y)
+print(face_track_file)

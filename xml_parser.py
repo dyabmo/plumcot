@@ -13,7 +13,7 @@
 ###################################################################################
 #Add face landmarks, make sure it's a square, what is the format of landmark file!
 #Create bounding box from face landmark points
-
+#fix error messages
 #Annotate the video with a cool speaking sprite ..
 
 #Put them in some functions
@@ -141,8 +141,7 @@ except:
 
 try:
     #Read MPG video file to generate images from it
-    #Can't be pickled ..
-    video = Video(sys.argv[4])
+    video = Video(filename = sys.argv[4])
 
 except:
     print("Error reading Video file ")
@@ -152,9 +151,7 @@ video_id = sys.argv[4].split('/')[last_element].split('.')[0]
 
 try:
     #Read face track file
-    #face_landmarks_file = pd.read_csv(sys.argv[5], sep=" ", header = None)
     face_landmarks_file = np.loadtxt(sys.argv[5])
-    #face_landmarks_file.columns = ["time", "id"]
 
 except:
     print("Error reading Face landmarks file")
@@ -590,8 +587,7 @@ for face_speech_item in face_speech_list:
             for item_time in face_speech_item[8]:
                 if(frame_time <= item_time[1] and frame_time >= item_time[0]   ):
                     Y[index] = 1
-                    face_track_file[ ['id'] == face_track_id_item and ['time'] == item['time'] ]['state'] = 1
-
+                    face_track_file.loc[ (face_track_file.id == face_track_id_item) & (face_track_file.time == float(item.time)) , 'state' ] = 1
 
             #Save the cropped image
             #scipy.misc.imsave('/vol/work1/dyab/frame_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
@@ -604,4 +600,11 @@ for face_speech_item in face_speech_list:
             print(Xv)
             print(Y.shape)
         #print(Y)
-print(face_track_file)
+
+face_track_file['left'] = (face_track_file['left'] / h_frame_size).map('{:.3f}'.format)
+face_track_file['right'] = (face_track_file['right'] / h_frame_size).map('{:.3f}'.format)
+face_track_file['top'] = (face_track_file['top'] / v_frame_size).map('{:.3f}'.format)
+face_track_file['bottom'] = (face_track_file['bottom'] / v_frame_size).map('{:.3f}'.format)
+
+
+face_track_file.to_csv('face_track_file.csv', sep=" ", header=False,index_label = False, index=False)

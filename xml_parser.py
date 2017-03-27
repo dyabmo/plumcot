@@ -11,14 +11,9 @@
 ###################################################################################
 #TODO
 ###################################################################################
-#Add face landmarks, make sure it's a square, what is the format of landmark file!
-#Create bounding box from face landmark points
 #fix error messages
-#Annotate the video with a cool speaking sprite ..
 
 #Put them in some functions
-
-#put outputs in working directory
 
 #use template like this to write file #Face track template:
 #FACE_TEMPLATE = ('{t:.3f} {identifier:d} '
@@ -567,20 +562,33 @@ for face_speech_item in face_speech_list:
             if ( len(face_landmark_item) > 0):
                 # Just to remove unneeded duplicates
                 face_landmark_item = face_landmark_item.iloc[[0]]
-                imglandmark = frame[ int(face_landmark_item['top']):int(face_landmark_item['bottom']),int(face_landmark_item['left']):int(face_landmark_item['right'])]
-                imglandmark = scipy.misc.imresize(imglandmark, (output_image_size_width, output_image_size_height))
-                scipy.misc.imsave('/vol/work1/dyab/frames_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) +'.' + 'landmark'+'.jpg', imglandmark)
+                #imglandmark = frame[ int(face_landmark_item['top']):int(face_landmark_item['bottom']),int(face_landmark_item['left']):int(face_landmark_item['right'])]
+                #imglandmark = scipy.misc.imresize(imglandmark, (output_image_size_width, output_image_size_height))
+                #scipy.misc.imsave('/vol/work1/dyab/frames_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) +'.' + 'landmark'+'.jpg', imglandmark)
 
+                # Image that contains the union of facetrack and face landmark!
+                img_top = min(int(face_landmark_item['top']), int(item['top']))
+                img_bottom = max(int(face_landmark_item['bottom']), int(item['bottom']))
+                img_left = min(int(face_landmark_item['left']), int(item['left']))
+                img_right = max(int(face_landmark_item['right']), int(item['right']))
+
+                union_image = frame[img_top:img_bottom, img_left:img_right]
+
+                union_image = scipy.misc.imresize(union_image, (output_image_size_width, output_image_size_height))
+                scipy.misc.imsave('/vol/work1/dyab/frames_test/' + str(face_track_id_item) + '.' + str(
+                    index) +'.jpg', union_image)
 
             #Crop the face coordinates from the frame
             #indexing= ymin,ymax.xmin,x max
-            img = frame[int(item['top']):int(item['bottom']) , int(item['left']):int(item['right'])]
+            #img = frame[int(item['top']):int(item['bottom']) , int(item['left']):int(item['right'])]
 
             #Resize the cropped image
-            img = scipy.misc.imresize(img, (output_image_size_width,output_image_size_height))
+            #img = scipy.misc.imresize(img, (output_image_size_width,output_image_size_height))
+            # Save the cropped image
+            # scipy.misc.imsave('/vol/work1/dyab/frames_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
 
             #Add the image to numpy array
-            Xv[index,:,:,:] = img
+            Xv[index,:,:,:] = union_image
 
             #Add TRUE boolean only for frames withing talking-face
             #Indexs 8 contains the list of talking time intervals
@@ -589,12 +597,9 @@ for face_speech_item in face_speech_list:
                     Y[index] = 1
                     face_track_file.loc[ (face_track_file.id == face_track_id_item) & (face_track_file.time == float(item.time)) , 'state' ] = 1
 
-            #Save the cropped image
-            scipy.misc.imsave('/vol/work1/dyab/frames_test/' + 'outfile' + str(face_track_id_item) +'.' +str(index) + '.jpg', img)
-
         #Save Xv after the loop ends and all frames are added
-        #np.save("/vol/work1/dyab/training_set/"+ video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
-        #np.save("/vol/work1/dyab/training_set/"+ video_id + '.' + str(face_track_id_item) + '.Y.npy', Y)
+        np.save("/vol/work1/dyab/training_set/"+ video_id +'.'+ str(face_track_id_item) + '.Xv.npy', Xv)
+        np.save("/vol/work1/dyab/training_set/"+ video_id + '.' + str(face_track_id_item) + '.Y.npy', Y)
         if (debug):
             print(Xv.shape)
             print(Xv)
@@ -607,6 +612,4 @@ face_track_file['left'] = (face_track_file['left'] / h_frame_size).map('{:.3f}'.
 face_track_file['right'] = (face_track_file['right'] / h_frame_size).map('{:.3f}'.format)
 face_track_file['top'] = (face_track_file['top'] / v_frame_size).map('{:.3f}'.format)
 face_track_file['bottom'] = (face_track_file['bottom'] / v_frame_size).map('{:.3f}'.format)
-
-
-#face_track_file.to_csv('face_track_file2.txt', sep=" ", header=False,index_label = False, index=False)
+face_track_file.to_csv("/vol/work1/dyab/training_set/"+video_id+"facetrack_talkingface.txt", sep=" ", header=False,index_label = False, index=False)

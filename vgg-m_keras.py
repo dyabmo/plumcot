@@ -5,7 +5,8 @@ from keras.optimizers import SGD
 from glob import glob
 import cv2, numpy as np
 import pickle
-
+from sklearn.model_selection import train_test_split
+from keras.utils import np_utils
 #Using VGG_M presented here:
 #   https://gist.github.com/ksimonyan/f194575702fae63b2829#file-readme-md
 #   https://arxiv.org/pdf/1405.3531.pdf
@@ -16,6 +17,7 @@ import pickle
 
 nb_filters = 32
 #Think about 224*224
+input_shape=(128,128,3)
 nb_epoch = 10
 batch_size=32
 
@@ -54,30 +56,31 @@ def VGG_M():
     model.add(Dropout(0.5))
 
     #Softmax layer
-    # Only 2 classes: talking or not talking!
-    model.add(Dense(2, activation='softmax'))
+    #Only 1 value: talking or not talking!
+    model.add(Dense(1, activation='softmax'))
 
     return model
 
- def save_to_pickle(dir,output_file):
-        x_fnames = glob(dir+"/*.Xv.npy")
-        x_fnames.sort()
-        print(x_fnames)
-        x_arrays = [np.load(f) for f in x_fnames]
-        x_train = np.concatenate(x_arrays)
-        print(x_train.shape)
+def save_to_pickle(dir,output_file):
 
-        y_fnames = glob(dir+"/*.Y.npy")
-        y_fnames.sort()
-        print(y_fnames)
-        y_arrays = [np.load(f) for f in y_fnames]
-        y_train = np.concatenate(y_arrays)
-        print(y_train.shape)
+    x_fnames = glob(dir+"/*.Xv.npy")
+    x_fnames.sort()
+    print(x_fnames)
+    x_arrays = [np.load(f) for f in x_fnames]
+    x_train = np.concatenate(x_arrays)
+    print(x_train.shape)
 
-        with open(output_file, 'wb') as f:
-            data = x_train, y_train
-            # Pickle the 'data' dictionary using the highest protocol available.
-            pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+    y_fnames = glob(dir+"/*.Y.npy")
+    y_fnames.sort()
+    print(y_fnames)
+    y_arrays = [np.load(f) for f in y_fnames]
+    y_train = np.concatenate(y_arrays)
+    print(y_train.shape)
+
+    with open(output_file, 'wb') as f:
+        data = x_train, y_train
+        # Pickle the 'data' dictionary using the highest protocol available.
+        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
 def load_from_pickle(dir):
 
@@ -88,18 +91,13 @@ def load_from_pickle(dir):
 
 if __name__ == "__main__":
 
-    x_train,y_train = load_from_pickle('/vol/work1/dyab/training_set/sample_training.pickle')
-
-    #Aren't loaded for now
-    x_val = 0
-    y_va = 0
+    x_dataset,y_dataset = load_from_pickle('/vol/work1/dyab/training_set/sample_training.pickle')
+    x_train, x_val, y_train, y_val = train_test_split(x_dataset, y_dataset, test_size=0.2, random_state=0)
 
     model =VGG_M()
-
     sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    model.compile(loss='categorical_crossentropy', optimizer=sgd)
-
-    model.fit(x_train, y_train, verbose=1, batch_size=batch_size, epochs=nb_epoch,validation_data=(x_val, y_val))
+    model.compile(loss='binary_crossentropy', optimizer=sgd)
+    model.fit(x_train, y_train, verbose=1, batch_size=batch_size, epochs=nb_epoch,validation_data=(X_val, y_val))
 
     score = model.evaluate(x_val, y_val, verbose=0)
     print('Validation score:', score[0])

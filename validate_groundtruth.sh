@@ -28,7 +28,11 @@ while IFS='' read -r LINE || [[ -n "$LINE" ]]; do
 
     FACETRACK_TALKINGFACE=${OUTPUT_DIR}"/residual/"${LINE}".facetrack_talkingface.txt"
     VIDEO_OUT_DIR=${OUTPUT_DIR}"/"${LINE}".talkingface.mp4"
+    XGTF_OUT_DIR=${OUTPUT_DIR}"/"${LINE}".xgtf"
 
+    #Copy xgtf for easier comparison
+    cp "${XGTF_DIR}" "${XGTF_OUT_DIR}"
+    
     echo Starting to split videos into shots\
     #Split video into shots, generate shot.json for each video file.
     echo python "${PYANNOTE_STRUCTURE}" shot "${VIDEO_DIR}" "${SHOT_DIR}"
@@ -41,6 +45,11 @@ while IFS='' read -r LINE || [[ -n "$LINE" ]]; do
 
     echo Generate landmarks\
     #Generate landmarks
+
+    #Change to master to execute landmarks command
+    cd /people/dyab/pyannote-video
+    git checkout master
+
     echo python "${PYANNOTE_FACE}" landmarks "${VIDEO_DIR}" "${DLIB_DIR}" "${FACETRACK_DIR}" "${LANDMARKS_DIR}"
     python "${PYANNOTE_FACE}" landmarks "${VIDEO_DIR}" "${DLIB_DIR}" "${FACETRACK_DIR}" "${LANDMARKS_DIR}"
 
@@ -49,10 +58,13 @@ while IFS='' read -r LINE || [[ -n "$LINE" ]]; do
     echo python "${XML_PARSER}" "${TRS_DIR}" "${XGTF_DIR}" "${FACETRACK_DIR}" "${VIDEO_DIR}" "${LANDMARKS_DIR}" "${FACETRACK_TALKINGFACE}"
     python "${XML_PARSER}" "${TRS_DIR}" "${XGTF_DIR}" "${FACETRACK_DIR}" "${VIDEO_DIR}" "${LANDMARKS_DIR}" "${FACETRACK_TALKINGFACE}"
 
+    #Change to develop to execute demo command
+    cd /people/dyab/pyannote-video
+    git checkout develop
     #echo Generate demo video\
     #Generate video with talking face annotation
     #echo python "${PYANNOTE_FACE}" demo "${VIDEO_DIR}" "${FACETRACK_TALKINGFACE}" "${VIDEO_OUT_DIR}" --talking-face=True
-    #python "${PYANNOTE_FACE}" demo "${VIDEO_DIR}" "${FACETRACK_TALKINGFACE}" "${VIDEO_OUT_DIR}" --talking-face=True
+    python "${PYANNOTE_FACE}" demo "${VIDEO_DIR}" "${FACETRACK_TALKINGFACE}" "${VIDEO_OUT_DIR}" --talking-face=True
 
     echo ====================================================================
     echo \

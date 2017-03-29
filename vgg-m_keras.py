@@ -4,6 +4,7 @@ from keras.layers import Conv2D, MaxPooling2D, ZeroPadding2D
 from keras.optimizers import SGD
 from glob import glob
 import cv2, numpy as np
+import pickle
 
 #Using VGG_M presented here:
 #   https://gist.github.com/ksimonyan/f194575702fae63b2829#file-readme-md
@@ -58,25 +59,38 @@ def VGG_M():
 
     return model
 
+ def save_to_pickle(dir,output_file):
+        x_fnames = glob(dir+"/*.Xv.npy")
+        x_fnames.sort()
+        print(x_fnames)
+        x_arrays = [np.load(f) for f in x_fnames]
+        x_train = np.concatenate(x_arrays)
+        print(x_train.shape)
+
+        y_fnames = glob(dir+"/*.Y.npy")
+        y_fnames.sort()
+        print(y_fnames)
+        y_arrays = [np.load(f) for f in y_fnames]
+        y_train = np.concatenate(y_arrays)
+        print(y_train.shape)
+
+        with open(output_file, 'wb') as f:
+            data = x_train, y_train
+            # Pickle the 'data' dictionary using the highest protocol available.
+            pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+def load_from_pickle(dir):
+
+    with open(dir, 'rb') as f:
+        x_train, y_train = pickle.load(f)
+
+    return x_train, y_train
+
 if __name__ == "__main__":
 
+    x_train,y_train = load_from_pickle('/vol/work1/dyab/training_set/sample_training.pickle')
 
-    x_fnames = glob("/vol/work1/dyab/training_set/*.Xv.npy")
-    x_fnames.sort()
-    print(x_fnames)
-    x_arrays = [np.load(f) for f in x_fnames]
-    x_train = np.concatenate(x_arrays)
-    print(x_train)
-
-    y_fnames = glob("/vol/work1/dyab/training_set/*.Y.npy")
-    y_fnames.sort()
-    print(y_fnames)
-    y_arrays = [np.load(f) for f in y_fnames]
-    y_train = np.concatenate(y_arrays)
-
-    exit(0)
-    x_train = np.loadtxt("/vol/work1/dyab/training_set/BFMTV_CultureEtVous_2012-04-16_065040.36.Xv.npy")
-    y_train = np.loadtxt("/vol/work1/dyab/training_set/BFMTV_CultureEtVous_2012-04-16_065040.36.Y.npy")
+    #Aren't loaded for now
     x_val = 0
     y_va = 0
 

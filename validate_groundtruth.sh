@@ -3,9 +3,9 @@
 #Activate conda environment in case it's not activated
 source activate deeplearning
 
-chmod 755 validate_groundtruth.sh
+chmod 755 /people/dyab/plumcot/validate_groundtruth.sh
 #Set directories
-REPERE_DIR="/vol/corpora4/mediaeval/2015/PersonDiscoveryTask/REPERE/DATA/SOURCE\\ DATA/TRAIN"
+REPERE_DIR="/people/dyab/repere_train"
 OUTPUT_DIR="/vol/work1/dyab/groundtruth_validation"
 DLIB_DIR="/vol/work1/dyab/dlib.face.landmarks.dat"
 
@@ -36,7 +36,7 @@ while IFS='' read -r LINE || [[ -n "$LINE" ]]; do
 
     echo Starting to track faces according to splitted shots\
     #To track faces according to splitted shots
-    #Note: setting the interval "--every" is very important for quick processing!
+    #Note: setting the interval "--every" is important for quick processing!
     python "${PYANNOTE_FACE}" track --every=0.5 "${VIDEO_DIR}" "${SHOT_DIR}" "${FACETRACK_DIR}"
 
     echo Generate landmarks\

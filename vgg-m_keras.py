@@ -97,7 +97,7 @@ if __name__ == "__main__":
     model =VGG_M()
     sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
     model.compile(loss='binary_crossentropy', optimizer=sgd)
-    model.fit(x_train, y_train, verbose=1, batch_size=batch_size, epochs=nb_epoch,validation_data=(X_val, y_val))
+    model.fit(x_train, y_train, verbose=1, batch_size=batch_size, epochs=nb_epoch,validation_data=(x_val, y_val))
 
     score = model.evaluate(x_val, y_val, verbose=0)
     print('Validation score:', score[0])

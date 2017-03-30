@@ -15,11 +15,10 @@ from keras.utils import np_utils
 #https://keras.io/getting-started/sequential-model-guide/
 #https://gist.github.com/baraldilorenzo/07d7802847aaad0a35d3
 
-nb_filters = 32
 #Think about 224*224
 input_shape=(128,128,3)
-nb_epoch = 10
-batch_size=32
+nb_epoch = 2
+batch_size=16
 
 def VGG_M():
     model = Sequential()
@@ -96,12 +95,12 @@ if __name__ == "__main__":
 
     model =VGG_M()
     sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    model.compile(loss='binary_crossentropy', optimizer=sgd)
+    model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['acc', 'mae'])
     model.fit(x_train, y_train, verbose=1, batch_size=batch_size, epochs=nb_epoch,validation_data=(x_val, y_val))
 
     score = model.evaluate(x_val, y_val, verbose=0)
-    print('Validation score:', score[0])
-    print('Validation accuracy:', score[1])
+    print('Validation Accuracy:' + str(score[0]))
+    print('Validation Mean Square error:'+str( score[1]))
 
     #For prediction
     #out = model.predict(im)

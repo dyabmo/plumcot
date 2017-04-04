@@ -11,13 +11,9 @@ from keras.utils import np_utils
 #   https://gist.github.com/ksimonyan/f194575702fae63b2829#file-readme-md
 #   https://arxiv.org/pdf/1405.3531.pdf
 
-#HELP:
-#https://keras.io/getting-started/sequential-model-guide/
-#https://gist.github.com/baraldilorenzo/07d7802847aaad0a35d3
-
 #Think about 224*224
-input_shape=(128,128,3)
-nb_epoch = 2
+input_shape=(224,224,3)
+nb_epoch = 30
 batch_size=16
 
 def VGG_M():
@@ -101,7 +97,3 @@ if __name__ == "__main__":
     score = model.evaluate(x_val, y_val, verbose=0)
     print('Validation Accuracy:' + str(score[0]))
     print('Validation Mean Square error:'+str( score[1]))
-
-    #For prediction
-    #out = model.predict(im)
-    #print np.argmax(out)

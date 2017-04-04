@@ -100,8 +100,6 @@ def create_bounding_box(polygon_points):
 def print_list_items(input_list):
     for item in input_list:
         print(item)
-    print("Size: "+str(len(input_list)))
-
 
 ###################################################################################
 # Read the input files
@@ -526,7 +524,6 @@ def get_landmarks_bounding_box(face_landmarks_file,h_frame_size,v_frame_size):
 def generate_training_set(face_speech_list,face_track_file,face_landmarks_dataframe,output_dir):
     #For each entry in our list:
 
-    print_list_items(face_speech_list)
     for face_speech_item in face_speech_list:
 
         face_track_id_list = face_speech_item[LAST_ELEMENT]
@@ -639,12 +636,6 @@ if __name__ == "__main__":
     face_landmarks_dataframe = get_landmarks_bounding_box(face_landmarks_file, h_frame_size, v_frame_size)
 
     generate_training_set(face_speech_list, face_track_file, face_landmarks_dataframe, output_dir)
-
-    print("################# Speech turns from TRS file #####################")
-    print_list_items(speech_turn_list)
-
-    print("################# Face data from XGTF file ####################")
-    print_list_items(xgtf_data_list)
 
     print("##################### Face-speech list ######################################")
     print_list_items(face_speech_list)

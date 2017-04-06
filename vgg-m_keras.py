@@ -8,17 +8,23 @@ import pickle
 from sklearn.model_selection import train_test_split
 from keras.utils.io_utils import HDF5Matrix
 import h5py
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, CSVLogger
+from visual_callbacks import AccLossPlotter
 
 #Using VGG_M presented here:
 #   https://gist.github.com/ksimonyan/f194575702fae63b2829#file-readme-md
 #   https://arxiv.org/pdf/1405.3531.pdf
 #Params: http://www.robots.ox.ac.uk/%7Evgg/publications/2016/Chung16/chung16.pdf
 
-input_shape=(224,224,3)
-nb_epoch = 30
+INPUT_WIDTH=224
+INPUT_HEIGHT=224
+INPUT_CHANNEL=3
+input_shape=(INPUT_WIDTH,INPUT_HEIGHT,INPUT_CHANNEL)
+nb_epoch = 200
 batch_size=32
-number_of_nodes=4
+number_of_nodes=8
+steps_per_epoch_train=2300
+validation_steps = 580
 
 def VGG_M():
     model = Sequential()
@@ -88,6 +94,39 @@ def load_from_pickle(dir):
         x_train, y_train = pickle.load(f)
     return x_train, y_train
 
+def validate_dataset_shape(dir):
+
+    #validate_dataset_shape('/vol/work1/dyab/training_set')
+
+    validate = True
+
+    #Validate input shape
+    x_fnames = glob(dir + "/*.Xv.npy")
+    x_fnames.sort()
+    x_size=0
+    for f in x_fnames:
+        array = np.load(f)
+        x_size = x_size + array.shape[0]
+
+        if (array.shape[1] != INPUT_WIDTH or array.shape[2] != INPUT_HEIGHT or array.shape[3] != INPUT_CHANNEL):
+            print(f + ":  " + str(array.shape))
+            validate=False
+    print("x_size: " + str(x_size))
+    #Validate output shape
+    y_fnames = glob(dir + "/*.Y.npy")
+    y_fnames.sort()
+    y_size=0
+    for f in y_fnames:
+        array = np.load(f)
+        y_size = y_size + array.shape[0]
+
+    #validate that both are equal in shape
+    if(x_size != y_size):
+        print("x_size: " + str(x_size) + ", y_size: "+str(y_size))
+        validate = False
+
+    return validate
+
 def save_to_hdf5(dir,output_file):
 
     #save_to_hdf5('/vol/work1/dyab/training_set/sample_dataset','sample.h5')
@@ -96,22 +135,26 @@ def save_to_hdf5(dir,output_file):
     x_fnames = glob(dir + "/*.Xv.npy")
     x_fnames.sort()
     x_arrays = [np.load(f) for f in x_fnames]
-    x_train = np.concatenate(x_arrays)
-    print(x_train.shape)
+    x_dataset = np.concatenate(x_arrays)
 
     #Get y
     y_fnames = glob(dir + "/*.Y.npy")
     y_fnames.sort()
     y_arrays = [np.load(f) for f in y_fnames]
-    y_train = np.concatenate(y_arrays)
-    print(y_train.shape)
+    y_dataset = np.concatenate(y_arrays)
+    print(y_dataset.shape)
+    print(x_dataset.shape)
+
+    x_train, x_val, y_train, y_val = train_test_split(x_dataset, y_dataset, test_size=0.2, random_state=0)
 
     f = h5py.File(dir+"/"+output_file, 'w')
     # Creating dataset to store features
-    X_dset = f.create_dataset('training_input',data=x_train)
+    f.create_dataset('training_input',data=x_train)
+    f.create_dataset('training_validation_input', data=x_val)
 
     # Creating dataset to store labels
-    y_dset = f.create_dataset('training_labels', data=y_train)
+    f.create_dataset('training_labels', data=y_train)
+    f.create_dataset('training_validation_labels', data=y_val)
     f.flush()
     f.close()
 
@@ -122,6 +165,10 @@ def load_from_hdf5(dir,type):
     if(type=="training"):
         X_train = HDF5Matrix(dir, 'training_input')
         y_train = HDF5Matrix(dir, 'training_labels')
+
+    elif (type == "training_validation"):
+        X_train = HDF5Matrix(dir, 'training_validation_input')
+        y_train = HDF5Matrix(dir, 'training_validation_labels')
 
     elif(type=="development"):
         X_train = HDF5Matrix(dir, 'development_input')
@@ -170,23 +217,34 @@ def generate_validation_images_hdf5(file):
         for i in range(0, x_val.shape[0], batch_size):
             yield (x_val[i:i+batch_size], y_val[i:i+batch_size])
 
+def generate_imges_from_hdf5(file,type="training"):
+
+    while 1:
+        x, y = load_from_hdf5(file,type=type)
+        print(x.shape[0])
+
+        for i in range(0,x.shape[0],batch_size):
+            yield (x[i:i+batch_size], y[i:i+batch_size])
+
 if __name__ == "__main__":
 
-    x_train,y_train=load_from_hdf5('/vol/work1/dyab/training_set/sample_dataset/sample.h5',type="training")
-    steps_per_epoch_train = int(x_train.shape[0]/batch_size)
+    training_path="/vol/work1/dyab/training_set/"
+    file_name="/medium_train_val_dataset.h5"
+    input_file = training_path+file_name
 
     model =VGG_M()
     sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
     model.compile(loss='binary_crossentropy', optimizer=sgd, metrics=['acc', 'mae'])
 
-    # checkpoint
-    filepath = "/vol/work1/dyab/training_models/weights.best.hdf5"
-    checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
-    callbacks_list = [checkpoint]
+    #list of callbacks:
+    plotter = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,name='medium_graph')
+    csv_logger = CSVLogger('/vol/work1/dyab/training_models/medium_training.log')
+    checkpoint = ModelCheckpoint("/vol/work1/dyab/training_models/medium_weights.{epoch:02d}-{loss:.2f}.hdf5", monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    callbacks_list = [csv_logger,checkpoint,plotter]
 
     #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
-    model.fit_generator(generate_training_images_hdf5('/vol/work1/dyab/training_set/sample_dataset/sample.h5'), steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, callbacks= callbacks_list,pickle_safe=True, workers=number_of_nodes)
+    model.fit_generator(generate_imges_from_hdf5(input_file,type="training"),verbose=2, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data =generate_imges_from_hdf5(input_file,type="training_validation"),validation_steps=validation_steps ,callbacks= callbacks_list,pickle_safe=True, workers=number_of_nodes)
 
-    score = model.evaluate_generator(generate_validation_images_hdf5('/vol/work1/dyab/training_set/sample_dataset/sample.h5'), steps=2, pickle_safe=True, workers=number_of_nodes)
+    score = model.evaluate_generator(generate_imges_from_hdf5(input_file,type="development"), steps=2, pickle_safe=True, workers=number_of_nodes)
     print('Validation Accuracy:' + str(score[0]))
     print('Validation Mean Square error:'+str( score[1]))

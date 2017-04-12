@@ -1,7 +1,6 @@
 #!/bin/bash
 
 LINE=$(cat /vol/work1/dyab/train_video_list | head -n "$1" | tail -1 )
-echo $LINE
 #Set directories
 REPERE_DIR="/people/dyab/repere_train"
 OUTPUT_DIR="/vol/work1/dyab/training_set"
@@ -22,6 +21,8 @@ EMBEDDINGS_DIR=${OUTPUT_DIR}"/residual/"${LINE}".embedding.txt"
 (set -x; pyannote-face.py extract --verbose "${VIDEO_DIR}" "${FACETRACK_DIR}" "${DLIB_DIR1}" "${DLIB_DIR2}"  "${LANDMARKS_DIR}" "${EMBEDDINGS_DIR}" )
 
 (set -x; python /people/dyab/plumcot/xml_parser.py "${TRS_DIR}" "${XGTF_DIR}" "${FACETRACK_DIR}" "${VIDEO_DIR}" "${LANDMARKS_DIR}" "${OUTPUT_DIR}" )
+
+echo $LINE >> ${OUTPUT_DIR}"/completed.txt"
 
 echo ====================================================================
 echo \

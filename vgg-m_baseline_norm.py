@@ -225,6 +225,23 @@ def load_from_hdf5(dir,type,start=0,end=None):
 
     return X_train,y_train
 
+def load_as_numpy_array(dir,type):
+
+    x_dataset,y_dataset = np.empty((0)),np.empty((0))
+    file = h5py.File(dir, 'r')  # 'r' means that hdf5 file is open in read-only mode
+
+    if (type == "training"):
+        x_dataset = np.array(file['training_input'])
+        y_dataset = np.array(file['training_labels'])
+
+    elif (type == "development"):
+        x_dataset = np.array(file['development_input'])
+        y_dataset = np.array(file['development_labels'])
+
+    file.close()
+
+    return x_dataset,y_dataset
+
 def random_shuffle_2_arrays(X_train,y_train):
 
     index = np.arange(X_train.shape[0])
@@ -315,21 +332,21 @@ if __name__ == "__main__":
     #training_generator = generate_imges_from_hdf5(input_file,type="training")
     #development_generator = generate_imges_from_hdf5(development_file,type="development")
 
-    x_train, y_train = load_from_hdf5(dir=input_file,type="training" )
+    x_train, y_train = load_as_numpy_array(dir=input_file,type="training" )
     print("Finished loading training set\n")
-    x_dev, y_dev     = load_from_hdf5(dir=development_file,type="development" )
+    x_dev, y_dev     = load_as_numpy_array(dir=development_file,type="development" )
     print("Finished loading development set\n")
 
-
-    datagen = ImageDataGenerator(featurewise_center=True , featurewise_std_normalization=True)# , rescale=1./255 )
+    datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last")# featurewise_center=True , featurewise_std_normalization=True,
     #Fit on a subset of training data, then apply to training and validation data!
-    subset = int(x_train.shape[0]*0.1)
-    print("Finished fitting the image generator")
-    datagen.fit(x_train[0:subset])
+    #subset = int(x_train.shape[0]*0.2)
+    #datagen.fit(x_train[0:subset])
     print("Finished fitting the image generator")
 
     training_generator = datagen.flow(x_train, y_train, batch_size=batch_size, shuffle=True )
+    print("Finished datagen.flow")
     development_generator = datagen.flow(x_dev, y_dev, batch_size=batch_size, shuffle=True )
+    print("Finished evalgen.flow")
 
     model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list)
 
@@ -337,7 +354,6 @@ if __name__ == "__main__":
     X_val,y_val =  load_from_hdf5(development_file, "development")
     ConfusionMatrixPlotter(X_val=X_val, classes=("Talking","Not Talking"), Y_val=y_val,path=output_path)
 
-    exit(0)
     score = model.evaluate_generator(development_generator, steps=development_steps)
 
     print('Validation Accuracy:' + str(score[0]))

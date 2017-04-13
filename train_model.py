@@ -161,11 +161,17 @@ def generate_imges_from_hdf5(file,image_size,type="training",):
     elif(type=="development"):
         index = development_no_samples
 
+    #Randomize which batch to get
+    rand_index = np.arange(start=0, stop = index-batch_size, step = batch_size)
+    np.random.shuffle(rand_index)
+
     while 1:
 
-        for i in range(0,index-batch_size,batch_size):
+        for i in range(0, rand_index.shape[0] ):
 
-            x, y = load_from_hdf5(file, type=type,start=i,end=i+batch_size)
+            #Choose a random batch
+            x,y = load_from_hdf5(file, type=type,start=rand_index[i],end=rand_index[i]+batch_size)
+            #Proprocess random batch: shuffle samples, rescale values, resize if needed
             x_train, y_train = preprocess_batch(x,y,image_size=image_size)
 
             yield (x_train, y_train)

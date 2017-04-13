@@ -1,5 +1,5 @@
 from keras.models import load_model
-from glob import glob
+from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 from keras.utils.io_utils import HDF5Matrix
 import h5py
@@ -18,6 +18,7 @@ number_of_nodes=12
 training_no_samples=0
 development_no_samples=0
 test_no_samples=0
+IMAGE_GENERATOR=False
 
 def process_arguments(arguments):
 
@@ -25,7 +26,7 @@ def process_arguments(arguments):
     assert (os.path.isfile(arguments[1])), "Error in model: file doesn't exist."
     assert (arguments[2] != 112 or arguments[2] != 224), "Error in Image size: must be either 224 or 112."
     assert (int(arguments[3]) % 32 == 0), "Error in batch size."
-    assert (os.path.isdir(arguments)), "Error in output folder: folder doesn't exist."
+    assert (os.path.isdir(arguments[4])), "Error in output folder: folder doesn't exist."
 
     model_path = arguments[1]
     image_size = int(arguments[2])
@@ -226,9 +227,22 @@ if __name__ == "__main__":
     checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Val_Acc.{val_acc:.2f}.hdf5", monitor='val_acc', verbose=1, save_best_only=True, mode='max')
     callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 
-    #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
-    training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
-    development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+    if(IMAGE_GENERATOR):
+        x_train, y_train = load_as_numpy_array(dir=training_file, type="training")
+        x_dev, y_dev = load_as_numpy_array(dir=development_file, type="development")
+
+        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last", featurewise_center=True , featurewise_std_normalization=True)
+
+        #fit for featurewise center and std normalization
+        datagen.fit( random_shuffle_subset(x_train, 0.1 ))
+
+        training_generator = datagen.flow(x_train, y_train, batch_size=batch_size, shuffle=True)
+        development_generator = datagen.flow(x_dev, y_dev, batch_size=batch_size, shuffle=True)
+
+    else:
+        #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
+        training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
+        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
     model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list,pickle_safe=True,workers=10)
 

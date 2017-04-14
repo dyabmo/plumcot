@@ -12,6 +12,8 @@ import scipy.misc
 import os
 
 DEFAULT_IMAGE_SIZE=224
+IMAGE_SIZE_112 = 112
+IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 nb_epoch = 100
 batch_size=32
@@ -25,7 +27,7 @@ def process_arguments(arguments):
 
     assert len(arguments) == 5, "Error with number of arguments: <model path> <image size> <batch_size> <output_path>."
     assert (os.path.isfile(arguments[1])), "Error in model: file doesn't exist."
-    assert (arguments[2] != 112 or arguments[2] != 224), "Error in Image size: must be either 224 or 112."
+    assert (arguments[2] != 56 or arguments[2] != 112 or arguments[2] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
     assert (int(arguments[3]) % 32 == 0), "Error in batch size."
     assert (os.path.isdir(arguments[4])), "Error in output folder: folder doesn't exist."
 
@@ -183,18 +185,26 @@ def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
     x_np = np.array(x)
     y_np = np.array(y)
 
-    # Resize if needed
-    x_np_temp = np.empty((x_np.shape[0], image_size, image_size, INPUT_CHANNEL))
-    if (image_size != DEFAULT_IMAGE_SIZE):
-        for j in range(0, x_np.shape[0]):
-            x_np_temp[j] = scipy.misc.imresize(x_np[j], (image_size, image_size))
-        del x_np
-        x_np = x_np_temp
+    #If image size is 112*112 or 56*112: first I must resize 224*224 to 112*112
+    if (image_size == IMAGE_SIZE_112 ):
+
+        x_np_temp = np.empty((batch_size, IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, batch_size):
+            x_np_temp[j] = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
+
+    #If the requested image size was originally 56*112, then crop lower part of image, hopefully capturing the mouth, discard the upper one.
+    elif(image_size == IMAGE_SIZE_56 ):
+
+        x_np_temp = np.empty((batch_size, IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, batch_size):
+            temp = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
+            x_np_temp[j] = temp[IMAGE_SIZE_56: IMAGE_SIZE_112 , :, :]
+
     elif (image_size == DEFAULT_IMAGE_SIZE):
-        del x_np_temp
+        x_np_temp = x_np
 
     # Shuffle
-    x_train, y_train = random_shuffle_2_arrays(x_np, y_np)
+    x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
 
     # Perform simple normalization
     x_train = np.divide(x_train, 255.0)

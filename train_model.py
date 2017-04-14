@@ -2,6 +2,7 @@ from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 from keras.utils.io_utils import HDF5Matrix
+from keras.utils.np_utils import to_categorical
 import h5py
 from keras.callbacks import ModelCheckpoint, CSVLogger, Callback
 from visual_callbacks import AccLossPlotter, ConfusionMatrixPlotter
@@ -197,6 +198,9 @@ def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
 
     # Perform simple normalization
     x_train = np.divide(x_train, 255.0)
+
+    #Change y to categorical
+    y_train = to_categorical(y_train, num_classes=2)
 
     return x_train,y_train
 

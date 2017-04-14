@@ -10,6 +10,7 @@ import sys
 import timeit
 import scipy.misc
 import os
+import matplotlib.pyplot as plt
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -21,7 +22,13 @@ number_of_nodes=12
 training_no_samples=0
 development_no_samples=0
 test_no_samples=0
+WORKERS=10
 IMAGE_GENERATOR=False
+VISUALIZE=True
+
+#To be able to visualize correctly
+if VISUALIZE:
+    WORKERS = 1
 
 def process_arguments(arguments):
 
@@ -178,7 +185,24 @@ def generate_imges_from_hdf5(file,image_size,type="training",):
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
             x_train, y_train = preprocess_batch(x,y,image_size=image_size)
 
+            #Visualize 1/8 images out of each batch
+            if VISUALIZE: visualize(x_train, y_train,i)
+
             yield (x_train, y_train)
+
+def visualize(x_train,y_train,i):
+
+    index = batch_size // 8
+    for j in range(0, index):
+        plt.subplot(index // 2, index // 2, j + 1)
+
+        # Speaking person will show in RGB
+        scale = 1
+        if (not y_train[j * 8][1]):
+            scale = 255
+
+        plt.imshow(x_train[j * 8] * scale)
+    plt.savefig("/vol/work1/dyab/training_models/samples_visualization/batch_" + str(i) + ".png")
 
 def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
     # Convert to numpy array
@@ -205,13 +229,11 @@ def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
 
     # Shuffle
     x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
-
     # Perform simple normalization
     x_train = np.divide(x_train, 255.0)
 
     #Change y to categorical
     y_train = to_categorical(y_train, num_classes=2)
-
     return x_train,y_train
 
 def calculate_steps_per_epoch():
@@ -258,7 +280,7 @@ if __name__ == "__main__":
         training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
         development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
-    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list,pickle_safe=True,workers=10)
+    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)
 
     #Plot confusion matrix
     X_val,y_val =  load_from_hdf5(development_file, "development")

@@ -24,7 +24,8 @@ development_no_samples=0
 test_no_samples=0
 WORKERS=10
 IMAGE_GENERATOR=False
-VISUALIZE=True
+VISUALIZE=False
+GREYSCALE=True
 
 #To be able to visualize correctly
 if VISUALIZE:
@@ -162,7 +163,7 @@ def random_shuffle_subset( x_train,ratio=1):
 
     return x_subset
 
-def generate_imges_from_hdf5(file,image_size,type="training",):
+def generate_imges_from_hdf5(file,image_size,type="training"):
 
     index=0
 
@@ -196,13 +197,23 @@ def visualize(x_train,y_train,i):
     for j in range(0, index):
         plt.subplot(index // 2, index // 2, j + 1)
 
-        # Speaking person will show in RGB
-        scale = 1
-        if (not y_train[j * 8][1]):
-            scale = 255
+        image = x_train[j * 8]
 
-        plt.imshow(x_train[j * 8] * scale)
-    plt.savefig("/vol/work1/dyab/training_models/samples_visualization/batch_" + str(i) + ".png")
+        if GREYSCALE:
+            image = image.reshape((x_train.shape[1], x_train.shape[2]))
+            cmap = plt.cm.gray
+            if (not y_train[j * 8][1]):
+                cmap=None
+            plt.imshow(image, cmap=cmap)
+
+        else:
+        # Speaking person will show in RGB, but not inverted colors
+            scale = 1
+            if (not y_train[j * 8][1]):
+                scale = 255
+            plt.imshow( image * scale)
+
+    plt.savefig("/vol/work1/dyab/training_models/samples_visualization/greyscale/batch_" + str(i) + ".png")
 
 def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
     # Convert to numpy array
@@ -229,12 +240,27 @@ def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
 
     # Shuffle
     x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
+
     # Perform simple normalization
     x_train = np.divide(x_train, 255.0)
+
+    #Change to greyscale if needed
+    if GREYSCALE:
+        x_train = rgb2grey(x_train)
 
     #Change y to categorical
     y_train = to_categorical(y_train, num_classes=2)
     return x_train,y_train
+
+
+# Change to greyscale
+def rgb2grey(x):
+
+    r, g, b = x[ : , : , : , 0 ] , x[ : , : , : , 1 ], x[ : , : , : , 2 ]
+    grey = 0.2989 * r + 0.5870 * g + 0.1140 * b
+    grey_reshaped = grey.reshape((x.shape[0],x.shape[1],x.shape[2],1))
+
+    return grey_reshaped
 
 def calculate_steps_per_epoch():
 
@@ -267,10 +293,11 @@ if __name__ == "__main__":
         x_train, y_train = load_as_numpy_array(dir=training_file, type="training")
         x_dev, y_dev = load_as_numpy_array(dir=development_file, type="development")
 
-        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last", featurewise_center=True , featurewise_std_normalization=True)
+        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last")
+        #, featurewise_center=True , featurewise_std_normalization=True)
 
         #fit for featurewise center and std normalization
-        datagen.fit( random_shuffle_subset(x_train, 0.1 ))
+        #datagen.fit( random_shuffle_subset(x_train, 0.1 ))
 
         training_generator = datagen.flow(x_train, y_train, batch_size=batch_size, shuffle=True)
         development_generator = datagen.flow(x_dev, y_dev, batch_size=batch_size, shuffle=True)
@@ -281,11 +308,3 @@ if __name__ == "__main__":
         development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
     model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)
-
-    #Plot confusion matrix
-    X_val,y_val =  load_from_hdf5(development_file, "development")
-    ConfusionMatrixPlotter(X_val=X_val, classes=("Talking","Not Talking"), Y_val=y_val,path=output_path)
-    score = model.evaluate_generator(development_generator, steps=development_steps)
-
-    print('Validation Accuracy:' + str(score[0]))
-    print('Validation Mean Square error:' + str(score[1]))

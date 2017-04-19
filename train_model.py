@@ -26,6 +26,9 @@ WORKERS=10
 IMAGE_GENERATOR=False
 VISUALIZE=False
 GREYSCALE=True
+TRAINING_RATIO = 0.125
+VALIDATION_SIZE = 50000
+VALIDATION_START = 380000
 
 #To be able to visualize correctly
 if VISUALIZE:
@@ -36,7 +39,7 @@ def process_arguments(arguments):
     assert len(arguments) == 5, "Error with number of arguments: <model path> <image size> <batch_size> <output_path>."
     assert (os.path.isfile(arguments[1])), "Error in model: file doesn't exist."
     assert (arguments[2] != 56 or arguments[2] != 112 or arguments[2] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
-    assert (int(arguments[3]) % 32 == 0), "Error in batch size."
+    assert (int(arguments[3]) % 2 == 0), "Error in batch size."
     assert (os.path.isdir(arguments[4])), "Error in output folder: folder doesn't exist."
 
     model_path = arguments[1]
@@ -89,7 +92,7 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
     global test_no_samples
 
     f = h5py.File(train_dir, 'r')
-    training_no_samples = f.attrs['train_size']
+    training_no_samples = int(f.attrs['train_size'] * TRAINING_RATIO )
     print("Training number of samples: "+str(training_no_samples))
 
     if (dev_dir):
@@ -107,6 +110,12 @@ def load_from_hdf5(dir,type,start=0,end=None):
     X_train, y_train = 0,0
 
     if(type=="training"):
+        X_train = HDF5Matrix(dir, 'training_input',start=start,end=end)
+        y_train = HDF5Matrix(dir, 'training_labels',start=start,end=end)
+
+    elif (type == "validation"):
+        start = start + VALIDATION_START
+        end = end + VALIDATION_START
         X_train = HDF5Matrix(dir, 'training_input',start=start,end=end)
         y_train = HDF5Matrix(dir, 'training_labels',start=start,end=end)
 
@@ -128,6 +137,10 @@ def load_as_numpy_array(dir,type):
     if (type == "training"):
         x_dataset = np.array(file['training_input'])
         y_dataset = np.array(file['training_labels'])
+
+    elif (type == "validation"):
+        x_dataset = np.array(file['training_input'][VALIDATION_START: VALIDATION_START + VALIDATION_SIZE])
+        y_dataset = np.array(file['training_labels'][VALIDATION_START: VALIDATION_START + VALIDATION_SIZE])
 
     elif (type == "development"):
         x_dataset = np.array(file['development_input'])
@@ -170,6 +183,9 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
     if(type=="training"):
         index = training_no_samples
 
+    elif (type == "validation"):
+        index = VALIDATION_SIZE
+
     elif(type=="development"):
         index = development_no_samples
 
@@ -179,12 +195,12 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
     while 1:
 
-        for i in range(0, rand_index.shape[0] ):
+        for i in range(rand_index.shape[0]):
 
             #Choose a random batch
             x,y = load_from_hdf5(file, type=type,start=rand_index[i],end=rand_index[i]+batch_size)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
-            x_train, y_train = preprocess_batch(x,y,image_size=image_size)
+            x_train, y_train = preprocess(x,y,image_size=image_size)
 
             #Visualize 1/8 images out of each batch
             if VISUALIZE: visualize(x_train, y_train,i)
@@ -215,7 +231,7 @@ def visualize(x_train,y_train,i):
 
     plt.savefig("/vol/work1/dyab/training_models/samples_visualization/greyscale/batch_" + str(i) + ".png")
 
-def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
+def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
     # Convert to numpy array
     x_np = np.array(x)
     y_np = np.array(y)
@@ -223,15 +239,15 @@ def preprocess_batch(x,y,image_size=DEFAULT_IMAGE_SIZE):
     #If image size is 112*112 or 56*112: first I must resize 224*224 to 112*112
     if (image_size == IMAGE_SIZE_112 ):
 
-        x_np_temp = np.empty((batch_size, IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, batch_size):
+        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, x_np.shape[0]):
             x_np_temp[j] = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
 
     #If the requested image size was originally 56*112, then crop lower part of image, hopefully capturing the mouth, discard the upper one.
     elif(image_size == IMAGE_SIZE_56 ):
 
-        x_np_temp = np.empty((batch_size, IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, batch_size):
+        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, x_np.shape[0]):
             temp = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
             x_np_temp[j] = temp[IMAGE_SIZE_56: IMAGE_SIZE_112 , :, :]
 
@@ -265,9 +281,10 @@ def rgb2grey(x):
 def calculate_steps_per_epoch():
 
     steps_per_epoch_train = int(training_no_samples/batch_size)
+    validation_steps = int(VALIDATION_SIZE /batch_size)
     development_steps = int(development_no_samples / batch_size )
 
-    return steps_per_epoch_train, development_steps
+    return steps_per_epoch_train,validation_steps, development_steps
 
 if __name__ == "__main__":
 
@@ -277,27 +294,23 @@ if __name__ == "__main__":
 
     #Set global variables
     set_no_samples(training_file, development_file)
-    steps_per_epoch_train, development_steps = calculate_steps_per_epoch();
+    steps_per_epoch_train,validation_steps, development_steps = calculate_steps_per_epoch();
 
     model = load_model(model_path)
     model.summary()
 
     #list of callbacks:
-    plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch.')
+    plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch')
     csv_logger  = CSVLogger(output_path+"csv_logger.csv")
     time_logger = TimeLogger(output_path+"time_logger.csv")
-    checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Val_Acc.{val_acc:.2f}.hdf5", monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+    checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
     callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 
     if(IMAGE_GENERATOR):
         x_train, y_train = load_as_numpy_array(dir=training_file, type="training")
         x_dev, y_dev = load_as_numpy_array(dir=development_file, type="development")
 
-        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last")
-        #, featurewise_center=True , featurewise_std_normalization=True)
-
-        #fit for featurewise center and std normalization
-        #datagen.fit( random_shuffle_subset(x_train, 0.1 ))
+        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last", rotation_range=30., width_shift_range=0.3, height_shift_range=0.3, zoom_range=0.3, horizontal_flip=True, vertical_flip=True)
 
         training_generator = datagen.flow(x_train, y_train, batch_size=batch_size, shuffle=True)
         development_generator = datagen.flow(x_dev, y_dev, batch_size=batch_size, shuffle=True)
@@ -305,6 +318,7 @@ if __name__ == "__main__":
     else:
         #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
         training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
-        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+        validation_generator = generate_imges_from_hdf5(file=training_file, type="validation", image_size=image_size)
+        #development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
-    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = development_generator, validation_steps=development_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)
+    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = validation_generator, validation_steps=validation_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)

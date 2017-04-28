@@ -18,50 +18,46 @@ IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 nb_epoch = 100
 batch_size=32
-number_of_nodes=12
 training_no_samples=0
 development_no_samples=0
 test_no_samples=0
 WORKERS=10
 IMAGE_GENERATOR=False
+TRAINING_FIT_RATIO= 0.1
+NORMALIZE=True
 VISUALIZE=False
-GREYSCALE=True
-TRAINING_RATIO = 0.125
+GREYSCALE=False
+USE_VALIDATION = False
+TRAINING_RATIO = 0.30
 VALIDATION_SIZE = 50000
 VALIDATION_START = 380000
+
 
 #To be able to visualize correctly
 if VISUALIZE:
     WORKERS = 1
+    nb_epoch = 1
 
 def process_arguments(arguments):
 
-    assert len(arguments) == 5, "Error with number of arguments: <model path> <image size> <batch_size> <output_path>."
-    assert (os.path.isfile(arguments[1])), "Error in model: file doesn't exist."
-    assert (arguments[2] != 56 or arguments[2] != 112 or arguments[2] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
-    assert (int(arguments[3]) % 2 == 0), "Error in batch size."
-    assert (os.path.isdir(arguments[4])), "Error in output folder: folder doesn't exist."
+    assert len(arguments) == 7, "Error with number of arguments: <training set path> <development set path>  <model path> <image size> <batch_size> <output_path>."
+    assert (os.path.isfile(arguments[1])), "Error in training set: file doesn't exist."
+    assert (os.path.isfile(arguments[2])), "Error in development set: file doesn't exist."
+    assert (os.path.isfile(arguments[3])), "Error in model: file doesn't exist."
+    assert (arguments[4] != 56 or arguments[4] != 112 or arguments[4] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
+    assert (int(arguments[5]) % 2 == 0), "Error in batch size."
+    assert (os.path.isdir(arguments[6])), "Error in output folder: folder doesn't exist."
 
-    model_path = arguments[1]
-    image_size = int(arguments[2])
-    batch_size = int(arguments[3])
-    output_path = arguments[4]
+    training_file = arguments[1]
+    development_file = arguments[2]
+    model_path = arguments[3]
+    image_size = int(arguments[4])
+    batch_size = int(arguments[5])
+    output_path = arguments[6]
     if (output_path[-1] != "/"):
         output_path = output_path + "/"
 
-    return model_path, image_size, batch_size, output_path
-
-def set_paths():
-
-    training_path = "/vol/work1/dyab/training_set/"
-    training_file_name = "/train_dataset.h5"
-    training_file = training_path + training_file_name
-
-    development_path = "/vol/work1/dyab/development_set/"
-    development_file_name = "/develop_dataset.h5"
-    development_file = development_path + development_file_name
-
-    return training_file, development_file
+    return training_file,development_file, model_path, image_size, batch_size, output_path
 
 class TimeLogger(Callback):
 
@@ -93,10 +89,15 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
 
     f = h5py.File(train_dir, 'r')
     training_no_samples = int(f.attrs['train_size'] * TRAINING_RATIO )
+    print("Training file:" + train_dir)
     print("Training number of samples: "+str(training_no_samples))
 
-    if (dev_dir):
+    if USE_VALIDATION:
+        print("Validation number of samples: " + str(VALIDATION_SIZE))
+
+    if (dev_dir and not USE_VALIDATION):
         f = h5py.File(dev_dir, 'r')
+        print("Development file:" + dev_dir)
         development_no_samples = f.attrs['dev_size']
         print("Development number of samples: " + str(development_no_samples))
 
@@ -135,8 +136,8 @@ def load_as_numpy_array(dir,type):
     file = h5py.File(dir, 'r')  # 'r' means that hdf5 file is open in read-only mode
 
     if (type == "training"):
-        x_dataset = np.array(file['training_input'])
-        y_dataset = np.array(file['training_labels'])
+        x_dataset = np.array(file['training_input'][0:training_no_samples])
+        y_dataset = np.array(file['training_labels'][0:training_no_samples])
 
     elif (type == "validation"):
         x_dataset = np.array(file['training_input'][VALIDATION_START: VALIDATION_START + VALIDATION_SIZE])
@@ -203,11 +204,11 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             x_train, y_train = preprocess(x,y,image_size=image_size)
 
             #Visualize 1/8 images out of each batch
-            if VISUALIZE: visualize(x_train, y_train,i)
+            if VISUALIZE: visualize(x_train, y_train,i,type)
 
             yield (x_train, y_train)
 
-def visualize(x_train,y_train,i):
+def visualize(x_train,y_train,i,type):
 
     index = batch_size // 8
     for j in range(0, index):
@@ -229,7 +230,12 @@ def visualize(x_train,y_train,i):
                 scale = 255
             plt.imshow( image * scale)
 
-    plt.savefig("/vol/work1/dyab/training_models/samples_visualization/greyscale/batch_" + str(i) + ".png")
+    if(type == "training"):
+        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_training/batch_" + str(i) + ".png")
+    elif(type == "development"):
+        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_eval/batch_" + str(i) + ".png")
+    elif (type == "validation"):
+        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_validation/batch_" + str(i) + ".png")
 
 def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
     # Convert to numpy array
@@ -258,7 +264,8 @@ def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
     x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
 
     # Perform simple normalization
-    x_train = np.divide(x_train, 255.0)
+    if NORMALIZE:
+        x_train = np.divide(x_train, 255.0)
 
     #Change to greyscale if needed
     if GREYSCALE:
@@ -288,9 +295,7 @@ def calculate_steps_per_epoch():
 
 if __name__ == "__main__":
 
-    model_path, image_size, batch_size, output_path = process_arguments(sys.argv)
-
-    training_file, development_file = set_paths()
+    training_file,development_file, model_path, image_size, batch_size, output_path = process_arguments(sys.argv)
 
     #Set global variables
     set_no_samples(training_file, development_file)
@@ -307,11 +312,15 @@ if __name__ == "__main__":
     callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 
     if(IMAGE_GENERATOR):
+        print("Using Image Generator")
         x_train, y_train = load_as_numpy_array(dir=training_file, type="training")
         x_dev, y_dev = load_as_numpy_array(dir=development_file, type="development")
 
-        datagen = ImageDataGenerator(rescale=1./255, data_format="channels_last", rotation_range=30., width_shift_range=0.3, height_shift_range=0.3, zoom_range=0.3, horizontal_flip=True, vertical_flip=True)
-
+        datagen = ImageDataGenerator(featurewise_center=True,featurewise_std_normalization=True,data_format="channels_last")
+        #, rotation_range = 30., width_shift_range = 0.3, height_shift_range = 0.3, zoom_range = 0.3, horizontal_flip = True, vertical_flip = True
+        size = int(TRAINING_FIT_RATIO*training_no_samples)
+        print("Fit Size: "+str(size))
+        datagen.fit(x_train[0:size])
         training_generator = datagen.flow(x_train, y_train, batch_size=batch_size, shuffle=True)
         development_generator = datagen.flow(x_dev, y_dev, batch_size=batch_size, shuffle=True)
 
@@ -319,6 +328,14 @@ if __name__ == "__main__":
         #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
         training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
         validation_generator = generate_imges_from_hdf5(file=training_file, type="validation", image_size=image_size)
-        #development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
-    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = validation_generator, validation_steps=validation_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)
+        if(USE_VALIDATION):
+            dev_val_generator = validation_generator
+            dev_val_steps = validation_steps
+        else:
+            dev_val_generator = development_generator
+            dev_val_steps = development_steps
+
+
+    model.fit_generator(training_generator,verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=nb_epoch, validation_data = dev_val_generator, validation_steps=dev_val_steps ,callbacks= callbacks_list,pickle_safe=True,workers=WORKERS)

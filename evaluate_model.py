@@ -99,14 +99,18 @@ def rgb2grey(x):
 if __name__ == "__main__":
 
     model_path,type, evaluated_dataset_path, image_size =  process_arguments()
-
     model = load_model(model_path)
     model.summary()
 
-    x, y = load_as_numpy_array(evaluated_dataset_path,type = type)
-    x_val, y_val = preprocess(x, y, image_size = image_size )
+    print("Model Path: " + model_path)
+    print("Evaluated dataset path: " + evaluated_dataset_path)
 
+    x, y = load_as_numpy_array(evaluated_dataset_path,type = type)
+    print("Dataset Size: " + str(x.shape[0]))
+
+    x_val, y_val = preprocess(x, y, image_size = image_size )
     score = model.evaluate(x_val, y_val,BATCH_SIZE=32, verbose=1)
+
     print('Validation Loss:' + str(score[0]))
     print('Validation Accuracy:' + str(score[1]))
     print('Validation Mean Absolute error:' + str(score[2]))

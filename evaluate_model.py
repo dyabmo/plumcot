@@ -109,7 +109,7 @@ if __name__ == "__main__":
     print("Dataset Size: " + str(x.shape[0]))
 
     x_val, y_val = preprocess(x, y, image_size = image_size )
-    score = model.evaluate(x_val, y_val,BATCH_SIZE=32, verbose=1)
+    score = model.evaluate(x_val, y_val,batch_size=BATCH_SIZE, verbose=1)
 
     print('Validation Loss:' + str(score[0]))
     print('Validation Accuracy:' + str(score[1]))

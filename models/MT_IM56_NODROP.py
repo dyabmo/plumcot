@@ -1,4 +1,4 @@
-from keras.models import Sequential
+from keras.models import Sequential, save_model
 from keras.layers import Dense, Dropout, Flatten, Conv1D, Conv2D, MaxPooling2D, ZeroPadding2D, BatchNormalization, Merge
 from keras.layers.merge import Concatenate
 from keras import optimizers
@@ -14,7 +14,7 @@ input_shape=(INPUT_HEIGHT,INPUT_WIDTH,INPUT_CHANNEL)
 
 #Params: http://www.robots.ox.ac.uk/%7Evgg/publications/2016/Chung16/chung16.pdf
 
-def return_towers():
+def add_tower():
 
     model = Sequential()
     # First conv layer
@@ -25,22 +25,15 @@ def return_towers():
 
     return model
 
-def VGG_M():
+def get_model():
 
     towers=list()
     for i in range(25):
-        model = return_towers()
+        model = add_tower()
         towers.append(model)
-
-    #concatenate channel wise after pool1
-    #merged = Merge([model1, model2], mode='concat')
 
     model = Sequential()
     model.add(Merge(towers, mode='concat'))
-    #model.add(Concatenate([model1, model2]))
-
-    print(model.inputs)
-    model.summary()
 
     #add conv1d layer
     model.add(Conv2D(filters=96,kernel_size=(1,1),activation='relu'))
@@ -76,11 +69,14 @@ def VGG_M():
     #2 classes: talking or not talking!
     model.add(Dense(2, activation='softmax'))
 
+    sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
+    model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['acc', 'mae'])
+
     return model
 
-def save_model():
+def save_model_():
 
-    model =VGG_M()
+    model =get_model()
 
     sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
     model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['acc', 'mae'])
@@ -92,7 +88,7 @@ def save_model():
 
 if __name__ == "__main__":
 
-    save_model()
+    save_model_()
 
 
 

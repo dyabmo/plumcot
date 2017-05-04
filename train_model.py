@@ -11,6 +11,7 @@ import timeit
 import scipy.misc
 import os
 import matplotlib.pyplot as plt
+import models.MT_IM56_NODROP as mt
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -24,13 +25,18 @@ validation_no_samples=0
 validation_start=0
 development_no_samples=0
 test_no_samples=0
+index_arr = np.zeros((0))
 IMAGE_GENERATOR=False
 TRAINING_FIT_RATIO= 0.1
 NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
+SHUFFLE_BATCHES=False
 USE_VALIDATION = True
 TRAINING_RATIO = 0.9
+MODEL_MT=True
+SEQUENCE_LENGTH=25
+STEP=5
 
 #To be able to visualize correctly
 if VISUALIZE:
@@ -87,8 +93,14 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
     global validation_start
     global development_no_samples
     global test_no_samples
+    global index_arr
 
     f = h5py.File(train_dir, 'r')
+
+    if MODEL_MT:
+        index_arr = np.array(f['index_array'])
+        print(index_arr)
+
     total_training_size = int(f.attrs['train_size'])
     training_no_samples = int(f.attrs['train_size'] * TRAINING_RATIO )
     print("Training file:" + train_dir)
@@ -177,6 +189,102 @@ def random_shuffle_subset( x_train,ratio=1):
 
     return x_subset
 
+def compute_y_mt(y):
+
+    #Compute y_mt using the majority of labels in y
+    majority = sum(y[:,1])
+    if majority >= int(SEQUENCE_LENGTH/2):
+        y_mt=[0,1]
+    else:
+        y_mt=[1,0]
+
+    return y_mt
+
+def prepare_mt(x,y):
+
+    # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
+
+    length = len(x)
+    length = length - (length % STEP)
+
+    no_samples = int( ((length - SEQUENCE_LENGTH)/STEP) ) + 1
+    x = x[0:length]
+    print(x.shape)
+
+    x_mt = x[0:SEQUENCE_LENGTH]
+    x_mt=x_mt.reshape((1,SEQUENCE_LENGTH, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
+
+    #Compute y_mt using the majority of labels in y
+    y_mt = compute_y_mt(y[0:SEQUENCE_LENGTH])
+
+    for i in range(no_samples - 1):
+
+        start = ((i+1) * STEP)
+        x_mt_next = x[start :SEQUENCE_LENGTH]
+        x_mt_next = x_mt_next.reshape((1, SEQUENCE_LENGTH, x_mt_next.shape[1], x_mt_next.shape[2], x_mt_next.shape[3]))
+        x_mt = np.concatenate((x_mt,x_mt_next))
+
+        # Compute y_mt using the majority of labels in y
+        y_mt_next = compute_y_mt(y[start:SEQUENCE_LENGTH])
+        y_mt = np.concatenate((y_mt,y_mt_next))
+
+        print(x_mt.shape)
+        print(y_mt.shape)
+
+    return x_mt,y_mt
+
+def generate_images_hdf5_mt(file,image_size,type="training" ):
+
+    #TODO: Calculate steps per epoch!!
+
+    i=0
+    facetrack_stopping_index=0
+
+    while 1:
+
+        while i < (len(index_arr) -1 ):
+
+            #check if currrent facetrack's length is bigger than SEQUENCE_LENGTH or not
+            #Only facetracks of length bigger than SEQUENCE_LENGTH will be used
+            if index_arr[i] < SEQUENCE_LENGTH:
+                i=i+1
+
+            else:
+
+                #Only in the initial case
+                if i==0:
+                    start=0
+                    end = index_arr[i]
+                else:
+                    start=index_arr[i] + facetrack_stopping_index
+                    end = index_arr[i+1] + sum(index_arr[0:i])
+
+                #Do once at the beginning
+                x, y = load_from_hdf5(file, type=type, start=start, end=end)
+                x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
+                x_train,y_train = prepare_mt(x_train_processed,y_train_processed)
+
+                exit(0)
+                #Keep doing until batch size is reached
+                while len(x_train) < (BATCH_SIZE * STEP):
+
+                    i = i + 1
+                    start = index_arr[i]
+                    end = index_arr[i + 1] + sum(index_arr[0:i])
+
+                    x, y = load_from_hdf5(file, type=type, start=start, end=end)
+                    x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
+                    x_train_next, y_train_next = prepare_mt(x_train_processed, y_train_processed)
+
+                    x_train = np.concatenate((x_train,x_train_next))
+                    y_train = np.concatenate((y_train,y_train_next))
+
+                #to save the place where we stopped in the middle of a facetrack, to use the remaining in next batch
+                facetrack_stopping_index = len(x_train) - (BATCH_SIZE * STEP)
+
+
+            yield (x_train, y_train)
+
 def generate_imges_from_hdf5(file,image_size,type="training"):
 
     index=0
@@ -194,7 +302,9 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
     #Randomize which batch to get
     rand_index = np.arange(start=0, stop =index - BATCH_SIZE, step = BATCH_SIZE)
-    np.random.shuffle(rand_index)
+
+    if SHUFFLE_BATCHES:
+        np.random.shuffle(rand_index)
 
     while 1:
 
@@ -303,8 +413,11 @@ if __name__ == "__main__":
     set_no_samples(training_file, development_file)
     steps_per_epoch_train,validation_steps, development_steps = calculate_steps_per_epoch();
 
-    model = load_model(model_path)
-    model.summary()
+    if MODEL_MT:
+        model = mt.get_model()
+    else:
+        model = load_model(model_path)
+    #model.summary()
 
     #list of callbacks:
     plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch')
@@ -327,8 +440,13 @@ if __name__ == "__main__":
         development_generator = datagen.flow(x_dev, y_dev, batch_size=BATCH_SIZE, shuffle=True)
 
     else:
-        #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
-        training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
+
+        if(MODEL_MT):
+            training_generator = generate_images_hdf5_mt(file=training_file, type="training", image_size= image_size)
+        else:
+            #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
+            training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
+
         validation_generator = generate_imges_from_hdf5(file=training_file, type="validation", image_size=image_size)
         development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 

@@ -9,7 +9,9 @@ INPUT_WIDTH=224
 INPUT_HEIGHT=224
 INPUT_CHANNEL=3
 input_shape=(INPUT_WIDTH,INPUT_HEIGHT,INPUT_CHANNEL)
-SHUFFLE_SAMPLES_INPLACE=False
+SEQUENCE_LENGTH=25
+PRINT_HISTOGRAM=False
+TEST=False
 
 def get_file_names(dir):
 
@@ -20,7 +22,7 @@ def get_file_names(dir):
 
     return names_list
 
-def get_numpy_arrays(dir,names_list):
+def get_numpy_files(dir, names_list):
 
     Xv_array=list()
     Y_array=list()
@@ -39,7 +41,7 @@ def get_numpy_arrays(dir,names_list):
 
     return flattened_Xv_array, flattened_Y_array
 
-def save_to_hdf5(dir,output_file,type="training"):
+def test(dir,output_file,type="training"):
 
     # validate shape along saving file to save time
     validate = True
@@ -47,8 +49,8 @@ def save_to_hdf5(dir,output_file,type="training"):
     #If type is training, must do a special handling to split to validation set
     if(type=="training"):
         #Set training and validation video names, to be able to add the validation videos in the end
-        validation_list = get_file_names("/vol/work1/dyab/validation_video_list")
-        all_list = get_file_names("/vol/work1/dyab/train_video_list")
+        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
+        all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
 
         #Exclude validation file names from list of all names to get training names
         training_only_list = [val for val in all_list if val not in validation_list]
@@ -57,8 +59,77 @@ def save_to_hdf5(dir,output_file,type="training"):
         random.shuffle(training_only_list)
 
         #get numpy arrays for training and validation
-        train_x_fnames, train_y_fnames = get_numpy_arrays(dir,training_only_list)
-        validation_x_fnames, validation_y_fnames = get_numpy_arrays(dir,validation_list)
+        train_x_fnames, train_y_fnames = get_numpy_files(dir, training_only_list)
+        validation_x_fnames, validation_y_fnames = get_numpy_files(dir, validation_list)
+
+        if PRINT_HISTOGRAM:
+            histogram = dict()
+            discard=0
+            for f in train_x_fnames:
+                array= np.load(f)
+                length = len(array)
+
+                if length in histogram:
+                    histogram[length]+=1
+                else:
+                    histogram[length]=1
+
+                if(length < SEQUENCE_LENGTH):
+                    discard+=1
+            print("Percentage of numpy arrays to be discarded(because they are smaller than 25)\n")
+            percentage = discard/len(train_x_fnames) * 100.
+            print(percentage)
+            print("Histogram\n")
+            print(histogram)
+
+            for f in train_x_fnames:
+                array = np.load(f)
+                length = len(array)
+                print(length)
+                if(length >=SEQUENCE_LENGTH):
+
+                    #change length to be multiple of 25
+                    length = length - (length % SEQUENCE_LENGTH)
+                    print(length)
+                    no_samples = int(length/SEQUENCE_LENGTH )
+                    print(no_samples)
+                    array=array[0:length]
+                    print(array.shape)
+                    array = array.reshape((no_samples,SEQUENCE_LENGTH, array.shape[1], array.shape[2],array.shape[3]))
+                    print(array.shape)
+                    #print(array)
+                    
+    return validate
+
+def save_to_hdf5(dir,output_file,type="training"):
+
+    # validate shape along saving file to save time
+    validate = True
+
+    #If type is training, must do a special handling to split to validation set
+    if(type=="training"):
+        #Set training and validation video names, to be able to add the validation videos in the end
+        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
+        all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
+
+        #Exclude validation file names from list of all names to get training names
+        training_only_list = [val for val in all_list if val not in validation_list]
+
+        #Shuffle training set with respect to videos
+        random.shuffle(training_only_list)
+
+        #get numpy arrays for training and validation
+        train_x_fnames, train_y_fnames = get_numpy_files(dir, training_only_list)
+        validation_x_fnames, validation_y_fnames = get_numpy_files(dir, validation_list)
+
+        # concatenate training and validation output
+        y_train_arrays = [np.load(f) for f in train_y_fnames]
+        index_arr_train = [len(array) for array in y_train_arrays]
+        y_train_arrays = np.concatenate(y_train_arrays)
+
+        y_validate_arrays = [np.load(f) for f in validation_y_fnames]
+        index_arr_validate = [len(array) for array in y_validate_arrays]
+        y_validate_arrays = np.concatenate(y_validate_arrays)
 
         #concatenate training and validation input
         x_train_arrays=[np.load(f) for f in train_x_fnames]
@@ -68,15 +139,12 @@ def save_to_hdf5(dir,output_file,type="training"):
         x_validate_arrays=np.concatenate(x_validate_arrays)
 
         x_dataset = np.concatenate((x_train_arrays,x_validate_arrays))
-
-        #concatenate training and validation output
-        y_train_arrays = [np.load(f) for f in train_y_fnames]
-        y_train_arrays = np.concatenate(y_train_arrays)
-
-        y_validate_arrays = [np.load(f) for f in validation_y_fnames]
-        y_validate_arrays = np.concatenate(y_validate_arrays)
-
         y_dataset = np.concatenate((y_train_arrays, y_validate_arrays))
+        index_arr = np.concatenate((index_arr_train,index_arr_validate))
+
+        print(len(index_arr))
+        print(sum(index_arr))
+        print(index_arr)
 
     #If type is development or test, handle normally
     elif (type == "development" or type == "test"):
@@ -90,6 +158,7 @@ def save_to_hdf5(dir,output_file,type="training"):
         y_fnames = glob(dir + "/*.Y.npy")
         y_fnames.sort()
         y_arrays = [np.load(f) for f in y_fnames]
+        index_arr = [len(array) for array in y_arrays]
         y_dataset = np.concatenate(y_arrays)
 
     #validate x_dataset shape
@@ -105,14 +174,9 @@ def save_to_hdf5(dir,output_file,type="training"):
     print(x_dataset.shape)
     print(y_dataset.shape)
 
-    if SHUFFLE_SAMPLES_INPLACE:
-        #Shuffle samples inplace: not useful! must shuffle videos themselves
-        index = np.arange(x_dataset.shape[0])
-        np.random.shuffle(index)
-        x_dataset=x_dataset[index]
-        y_dataset = y_dataset[index]
-
     f = h5py.File(output_file, 'w')
+    #Will be added to any type of files
+    f.create_dataset('index_array', data=index_arr)
 
     if(type == "training"):
 
@@ -169,3 +233,12 @@ if __name__ == "__main__":
     validate = save_to_hdf5(path, outputfile, type=type)
     if(not validate):
         print("Error in dataset shape...")
+
+    if TEST:
+        from keras.utils.io_utils import HDF5Matrix
+        X_train = HDF5Matrix(outputfile, 'index_array')
+
+        x=np.array(X_train)
+        print(x)
+        print(len(x))
+        print(sum(x))

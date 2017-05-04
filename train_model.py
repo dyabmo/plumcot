@@ -202,6 +202,7 @@ def compute_y_mt(y):
 
 def prepare_mt(x,y):
 
+    print("Entered prepare_mt")
     # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
 
     length = len(x)
@@ -211,26 +212,27 @@ def prepare_mt(x,y):
     x = x[0:length]
     print(x.shape)
 
-    x_mt = x[0:SEQUENCE_LENGTH]
+    x_mt = x[0:SEQUENCE_LENGTH,:,:,:]
     x_mt=x_mt.reshape((1,SEQUENCE_LENGTH, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
 
     #Compute y_mt using the majority of labels in y
-    y_mt = compute_y_mt(y[0:SEQUENCE_LENGTH])
+    y_mt = compute_y_mt(y[0:SEQUENCE_LENGTH,:])
 
     for i in range(no_samples - 1):
 
         start = ((i+1) * STEP)
-        x_mt_next = x[start :SEQUENCE_LENGTH]
+        x_mt_next = x[start:start+SEQUENCE_LENGTH,:,:,:]
         x_mt_next = x_mt_next.reshape((1, SEQUENCE_LENGTH, x_mt_next.shape[1], x_mt_next.shape[2], x_mt_next.shape[3]))
         x_mt = np.concatenate((x_mt,x_mt_next))
 
         # Compute y_mt using the majority of labels in y
-        y_mt_next = compute_y_mt(y[start:SEQUENCE_LENGTH])
+        y_mt_next = compute_y_mt(y[start:start+SEQUENCE_LENGTH,:])
         y_mt = np.concatenate((y_mt,y_mt_next))
 
         print(x_mt.shape)
         print(y_mt.shape)
 
+    exit(0)
     return x_mt,y_mt
 
 def generate_images_hdf5_mt(file,image_size,type="training" ):
@@ -250,6 +252,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                 i=i+1
 
             else:
+                print("Entered the else")
 
                 #Only in the initial case
                 if i==0:
@@ -262,6 +265,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                 #Do once at the beginning
                 x, y = load_from_hdf5(file, type=type, start=start, end=end)
                 x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
+                exit(0)
                 x_train,y_train = prepare_mt(x_train_processed,y_train_processed)
 
                 exit(0)

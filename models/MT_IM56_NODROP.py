@@ -89,27 +89,3 @@ def save_model_():
 if __name__ == "__main__":
 
     save_model_()
-
-
-
-#
-# from keras.models import Sequential
-# from keras.layers import Dense, Merge
-#
-# left_branch = Sequential()
-# left_branch.add(Dense(32, input_dim=784))
-#
-# middle_branch = Sequential()
-# middle_branch.add(Dense(32, input_dim=784))
-#
-# right_branch = Sequential()
-# right_branch.add(Dense(32, input_dim=784))
-#
-# merged = Merge([left_branch, middle_branch, right_branch], mode='concat')
-#
-# final_model = Sequential()
-# final_model.add(merged)
-# final_model.add(Dense(10, activation='softmax'))
-#
-#
-# model.fit([X_CNN1, X_CNN2], y) #Which will feed at time t X_CNN1[t] to CNN1 and X_CNN2[t] to CNN2.

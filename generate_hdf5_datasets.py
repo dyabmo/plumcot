@@ -11,7 +11,6 @@ INPUT_CHANNEL=3
 input_shape=(INPUT_WIDTH,INPUT_HEIGHT,INPUT_CHANNEL)
 SEQUENCE_LENGTH=25
 PRINT_HISTOGRAM=False
-TEST=False
 
 def get_file_names(dir):
 
@@ -98,7 +97,7 @@ def test(dir,output_file,type="training"):
                     array = array.reshape((no_samples,SEQUENCE_LENGTH, array.shape[1], array.shape[2],array.shape[3]))
                     print(array.shape)
                     #print(array)
-                    
+
     return validate
 
 def save_to_hdf5(dir,output_file,type="training"):
@@ -181,8 +180,16 @@ def save_to_hdf5(dir,output_file,type="training"):
     if(type == "training"):
 
         f.attrs['train_size'] = x_dataset.shape[0]
+        f.create_dataset('index_array_train', data=index_arr_train)
+        print(index_arr_train)
+
         f.attrs['validation_size'] = x_validate_arrays.shape[0]
+        f.attrs['validation_start'] = x_train_arrays.shape[0]
+        print(f.attrs['validation_start'])
         print(f.attrs['validation_size'])
+        f.create_dataset('index_array_validate', data=index_arr_validate)
+        print(index_arr_validate)
+
         # Creating dataset to store features
         f.create_dataset('training_input', data=x_dataset)
 
@@ -233,12 +240,3 @@ if __name__ == "__main__":
     validate = save_to_hdf5(path, outputfile, type=type)
     if(not validate):
         print("Error in dataset shape...")
-
-    if TEST:
-        from keras.utils.io_utils import HDF5Matrix
-        X_train = HDF5Matrix(outputfile, 'index_array')
-
-        x=np.array(X_train)
-        print(x)
-        print(len(x))
-        print(sum(x))

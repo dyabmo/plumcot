@@ -622,7 +622,7 @@ if __name__ == "__main__":
             dev_val_steps = development_steps
             percentage = compute_majority_class(training_file, type="development", start=0,
                                             end=development_no_samples)
-            print("Development set +ve label percentage: " + str(percentage))
+            print("Development set +ve label percentage: " + str(percentage)) 
 
     #list of callbacks:
     plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch',percentage=percentage)

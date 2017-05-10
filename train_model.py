@@ -12,6 +12,7 @@ import scipy.misc
 import os
 import matplotlib.pyplot as plt
 import models.MT_IM56_NODROP as mt
+import models.vgg_pretrained as pretrained
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -34,19 +35,23 @@ TRAINING_FIT_RATIO= 0.1
 NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
-SHUFFLE_BATCHES=False
+SHUFFLE_BATCHES=True
 USE_VALIDATION = True
-TRAINING_RATIO = 0.9
-MODEL_MT=True
+TRAINING_RATIO = 0.8
+VALIDATION_RATIO = 0.1
+
+MODEL_PRETRAINED=False
+
+MODEL_MT=False
+TRAINING_RATIO_MT = 0.2
 SEQUENCE_LENGTH=25
 STEP=5
-
+majority_list_true=list()
+majority_list_false=list()
 #To be able to visualize correctly
 if VISUALIZE:
     WORKERS = 1
     NB_EPOCH = 1
-
-#TODO: set WORKERS back
 
 def process_arguments():
 
@@ -114,8 +119,12 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
 
     if MODEL_MT:
         index_arr_train = np.array(f['index_array_train'])
+        target_index_arr_size = int((len(index_arr_train) * TRAINING_RATIO_MT))
+        index_arr_train = index_arr_train[0:target_index_arr_size]
+
         index_arr_validate = np.array(f['index_array_validate'])
         print(index_arr_train)
+        print(len(index_arr_train))
 
         training_no_samples_mt = return_sum_samples(index_arr_train)
         print("Number of training samples for multiple tower model: "+str(training_no_samples_mt))
@@ -124,8 +133,14 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
         print("Number of validation samples for multiple tower model: " + str(validation_no_samples_mt))
 
     if USE_VALIDATION:
-        validation_no_samples = int(f.attrs['validation_size'])
-        validation_start = int(f.attrs['validation_start'])
+        try:
+            validation_no_samples = int(f.attrs['validation_size'])
+            validation_start = int(f.attrs['validation_start'])
+        except Exception:
+            print("Validation set params not found in HDF5 file, computing according to VALIDATION_RATIO...")
+            validation_no_samples = int(VALIDATION_RATIO * total_training_size )
+            validation_start = total_training_size - validation_no_samples -1
+
         print("Validation start: " + str(validation_start))
         print("Validation number of samples: " + str(validation_no_samples))
 
@@ -140,21 +155,39 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
         test_no_samples = f.attrs['test_size']
         print("Test number of samples: " + str(test_no_samples))
 
-def load_from_hdf5(dir,type,start=0,end=None):
+def compute_majority_class(dir,type='validation',start=0,end=None):
+
+    _, y=load_from_hdf5(dir, type, start=start, end=end, labels_only=True)
+
+    positive_label_percentage =  (np.sum(y) / len(y)) * 100
+
+    return positive_label_percentage
+
+def load_from_hdf5(dir,type,start=0,end=None,labels_only=False):
 
     X_train, y_train = 0,0
 
     if(type=="training" or type == "validation"):
-        X_train = HDF5Matrix(dir, 'training_input',start=start,end=end)
-        y_train = HDF5Matrix(dir, 'training_labels',start=start,end=end)
+
+        if(labels_only):
+            y_train = HDF5Matrix(dir, 'training_labels', start=start, end=end)
+        else:
+            X_train = HDF5Matrix(dir, 'training_input',start=start,end=end)
+            y_train = HDF5Matrix(dir, 'training_labels',start=start,end=end)
 
     elif(type=="development"):
-        X_train = HDF5Matrix(dir, 'development_input',start=start,end=end)
-        y_train = HDF5Matrix(dir, 'development_labels',start=start,end=end)
+        if(labels_only):
+            y_train = HDF5Matrix(dir, 'development_labels', start=start, end=end)
+        else:
+            X_train = HDF5Matrix(dir, 'development_input',start=start,end=end)
+            y_train = HDF5Matrix(dir, 'development_labels',start=start,end=end)
 
     elif (type == "test"):
-        X_train = HDF5Matrix(dir, 'test_input',start=start,end=end)
-        y_train = HDF5Matrix(dir, 'test_labels',start=start,end=end)
+        if(labels_only):
+            y_train = HDF5Matrix(dir, 'test_labels', start=start, end=end)
+        else:
+            X_train = HDF5Matrix(dir, 'test_input',start=start,end=end)
+            y_train = HDF5Matrix(dir, 'test_labels',start=start,end=end)
 
     return X_train,y_train
 
@@ -208,13 +241,18 @@ def random_shuffle_subset( x_train,ratio=1):
 def compute_y_mt(y):
 
     #Compute y_mt using the majority of labels in y
-    #print(y[:,1])
     majority = np.sum(y[:,1])
-    #print(majority)
     if majority >= int(SEQUENCE_LENGTH/2):
         y_mt=np.array([0,1])
+        #majority_list_true.append(majority)
     else:
         y_mt=np.array([1,0])
+        #majority_list_false.append(majority)
+
+
+    #print(np.mean(majority_list_true))
+    #print(np.mean(majority_list_false))
+
 
     return y_mt
 
@@ -411,7 +449,6 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
     while 1:
 
         for i in range(rand_index.shape[0]):
-
             #Choose a random batch
             x,y = load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
@@ -421,6 +458,9 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             if VISUALIZE: visualize(x_train, y_train,i,type)
 
             yield (x_train, y_train)
+
+        print("\ni is: " + str(i) +" ("+type+")")
+
 
 def visualize(x_train,y_train,i,type):
 
@@ -537,17 +577,12 @@ if __name__ == "__main__":
     steps_per_epoch_train,validation_steps, development_steps = calculate_steps_per_epoch();
 
     if MODEL_MT:
-        model = mt.get_model()
+        model = mt.get_model(towers_no=SEQUENCE_LENGTH)
+    elif MODEL_PRETRAINED:
+        model = pretrained.vgg_pretrained()
     else:
         model = load_model(model_path)
     #model.summary()
-
-    #list of callbacks:
-    plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch')
-    csv_logger  = CSVLogger(output_path+"csv_logger.csv")
-    time_logger = TimeLogger(output_path+"time_logger.csv")
-    checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
-    callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 
     if(IMAGE_GENERATOR):
         print("Using Image Generator")
@@ -577,9 +612,24 @@ if __name__ == "__main__":
         if(USE_VALIDATION):
             dev_val_generator = validation_generator
             dev_val_steps = validation_steps
+            percentage = compute_majority_class(training_file, type="validation", start=validation_start,
+                                                end=validation_start + validation_no_samples)
+            print("Validation set +ve label percentage: "+str(percentage))
+
+
         else:
             dev_val_generator = development_generator
             dev_val_steps = development_steps
+            percentage = compute_majority_class(training_file, type="development", start=0,
+                                            end=development_no_samples)
+            print("Development set +ve label percentage: " + str(percentage))
+
+    #list of callbacks:
+    plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch',percentage=percentage)
+    csv_logger  = CSVLogger(output_path+"csv_logger.csv")
+    time_logger = TimeLogger(output_path+"time_logger.csv")
+    checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
+    callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 
 
-    model.fit_generator(training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list, pickle_safe=True, workers=WORKERS)
+    model.fit_generator(training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)

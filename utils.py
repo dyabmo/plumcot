@@ -1,6 +1,9 @@
 import numpy as np
 import h5py
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import timeit
 from keras.callbacks import Callback
 from keras.utils.io_utils import HDF5Matrix
@@ -25,6 +28,70 @@ class TimeLogger(Callback):
     def on_train_end(self, logs=None):
         self.fd.flush()
         self.fd.close()
+
+#Copied from: https://github.com/chasingbob/keras-visuals, with some modifications
+class AccLossPlotter(Callback):
+    #Plot training Accuracy and Loss values on a Matplotlib graph.
+
+    def __init__(self, graphs=['acc', 'loss'], save_graph=False,path='/vol/work1/dyab/training_models',name='training_acc_loss',percentage=0):
+        self.graphs = graphs
+        self.num_subplots = len(graphs)
+        self.save_graph = save_graph
+        self.name = name
+        self.path = path
+        self.percentage = percentage
+
+    def on_train_begin(self, logs={}):
+        self.acc = []
+        self.val_acc = []
+        self.loss = []
+        self.val_loss = []
+        self.epoch_count = 0
+        plt.ioff()
+
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.epoch_count += 1
+        self.val_acc.append(logs.get('val_acc'))
+        self.acc.append(logs.get('acc'))
+        self.loss.append(logs.get('loss'))
+        self.val_loss.append(logs.get('val_loss'))
+        epochs = [x for x in range(self.epoch_count)]
+
+        count_subplots = 0
+
+        if 'acc' in self.graphs:
+            count_subplots += 1
+            plt.subplot(self.num_subplots, 1, count_subplots)
+            plt.title('Accuracy')
+            plt.plot(epochs, self.val_acc, color='r')
+            plt.plot(epochs, self.acc, color='b')
+            plt.ylabel('accuracy')
+
+            red_patch = mpatches.Patch(color='red', label='Val. +ve label '+str('{:.2f}'.format(self.percentage)) +'%' )
+            blue_patch = mpatches.Patch(color='blue', label='Train')
+
+            plt.legend(handles=[red_patch, blue_patch], loc=4)
+
+        if 'loss' in self.graphs:
+            count_subplots += 1
+            plt.subplot(self.num_subplots, 1, count_subplots)
+            plt.title('Loss')
+            plt.plot(epochs, self.val_loss, color='r')
+            plt.plot(epochs, self.loss, color='b')
+            plt.ylabel('loss')
+
+            red_patch = mpatches.Patch(color='red', label='Val. +ve label '+str('{:.2f}'.format(self.percentage))+'%' )
+            blue_patch = mpatches.Patch(color='blue', label='Train')
+
+            plt.legend(handles=[red_patch, blue_patch], loc=4)
+
+        if self.save_graph:
+            plt.savefig(self.path+'/'+self.name+'.png')
+
+    def on_train_end(self, logs={}):
+        if self.save_graph:
+            plt.savefig(self.path+'/'+self.name+'.png')
 
 def compute_majority_class(dir,type='validation',start=0,end=None):
 

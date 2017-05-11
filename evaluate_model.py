@@ -1,11 +1,12 @@
 from keras.models import load_model
 import numpy as np
 from keras.utils.np_utils import to_categorical
-import h5py
 import sys
 import scipy.misc
 import os
-import matplotlib.pyplot as plt
+from glob import glob
+import utils
+
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -14,46 +15,24 @@ INPUT_CHANNEL=3
 BATCH_SIZE=32
 IMAGE_GENERATOR=False
 NORMALIZE=True
-VISUALIZE=False
 GREYSCALE=False
-VALIDATION_SIZE = 50000
-VALIDATION_START = 60000
 
 def process_arguments():
 
-    assert len(sys.argv) == 5, "Error with number of arguments: <Model Path> <Type> <Evaluated Dataset Path> <Image Size>"
-    assert (os.path.isfile(sys.argv[1])), "Error in model: file doesn't exist."
+    assert len(sys.argv) >= 5, "Error with number of arguments: <Model Path> <Type> <Image Size> <Evaluated Dataset Path> (Test dataset) "
+    assert (os.path.isdir(sys.argv[1])), "Error in models folder: folder doesn't exist."
     assert (sys.argv[2]=="validation" or sys.argv[2]=="development" or sys.argv[2]=="test" )
-    assert (os.path.isfile(sys.argv[3])), "Error in Dataset: file doesn't exist."
-    assert (sys.argv[4] != 56 or sys.argv[4] != 112 or sys.argv[4] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
+    assert (sys.argv[3] != 56 or sys.argv[3] != 112 or sys.argv[3] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
+    assert (os.path.isfile(sys.argv[4])), "Error in Dataset: file doesn't exist."
+    assert (os.path.isfile(sys.argv[5])), "Error in Dataset: file doesn't exist."
 
     model_path = sys.argv[1]
     type = sys.argv[2]
-    evaluated_dataset_path = sys.argv[3]
-    image_size = int(sys.argv[4])
+    image_size = int(sys.argv[3])
+    evaluated_dataset_path = sys.argv[4]
+    test_dataset_path = sys.argv[5]
 
-    return model_path,type, evaluated_dataset_path, image_size
-
-def load_as_numpy_array(dir,type):
-
-    x_dataset,y_dataset = np.empty((0)),np.empty((0))
-    file = h5py.File(dir, 'r')  # 'r' means that hdf5 file is open in read-only mode
-
-    if (type == "validation"):
-        x_dataset = np.array(file['training_input'][VALIDATION_START: VALIDATION_START + VALIDATION_SIZE])
-        y_dataset = np.array(file['training_labels'][VALIDATION_START: VALIDATION_START + VALIDATION_SIZE])
-
-    elif (type == "development"):
-        x_dataset = np.array(file['development_input'])
-        y_dataset = np.array(file['development_labels'])
-
-    elif (type == "test"):
-        x_dataset = np.array(file['test_input'])
-        y_dataset = np.array(file['test_labels'])
-
-    file.close()
-
-    return x_dataset,y_dataset
+    return model_path,type, image_size, evaluated_dataset_path, test_dataset_path
 
 def preprocess(x_np,y_np,image_size=DEFAULT_IMAGE_SIZE):
 
@@ -81,36 +60,63 @@ def preprocess(x_np,y_np,image_size=DEFAULT_IMAGE_SIZE):
 
     # Change to greyscale if needed
     if GREYSCALE:
-        x_np_temp = rgb2grey(x_np_temp)
+        x_np_temp = utils.rgb2grey(x_np_temp)
 
     #Change y to categorical
     y_eval = to_categorical(y_np, num_classes=2)
 
     return x_np_temp,y_eval
 
-def rgb2grey(x):
-
-    r, g, b = x[ : , : , : , 0 ] , x[ : , : , : , 1 ], x[ : , : , : , 2 ]
-    grey = 0.2989 * r + 0.5870 * g + 0.1140 * b
-    grey_reshaped = grey.reshape((x.shape[0],x.shape[1],x.shape[2],1))
-
-    return grey_reshaped
-
 if __name__ == "__main__":
 
-    model_path,type, evaluated_dataset_path, image_size =  process_arguments()
-    model = load_model(model_path)
-    model.summary()
+    model_path,type, image_size, evaluated_dataset_path, test_dataset_path =  process_arguments()
 
-    print("Model Path: " + model_path)
     print("Evaluated dataset path: " + evaluated_dataset_path)
 
-    x, y = load_as_numpy_array(evaluated_dataset_path,type = type)
-    print("Dataset Size: " + str(x.shape[0]))
+    x, y = utils.load_as_numpy_array(evaluated_dataset_path,type = "development")
+    print("Evaluation Dataset Size: " + str(x.shape[0]))
+    positive_label_percentage_dev = (np.sum(y) / len(y)) * 100
+    print("+VE label percentage: {:.2f}".format(positive_label_percentage_dev))
 
     x_val, y_val = preprocess(x, y, image_size = image_size )
-    score = model.evaluate(x_val, y_val,batch_size=BATCH_SIZE, verbose=1)
 
-    print('Validation Loss:' + str(score[0]))
-    print('Validation Accuracy:' + str(score[1]))
-    print('Validation Mean Absolute error:' + str(score[2]))
+    if (test_dataset_path):
+        print("Test dataset path: " + test_dataset_path)
+        x2, y2 = utils.load_as_numpy_array(test_dataset_path, type="test")
+        print("Test Dataset Size: " + str(x2.shape[0]))
+
+        positive_label_percentage_test = (np.sum(y2) / len(y2)) * 100
+
+        print("+VE label percentage: {:.2f}".format(positive_label_percentage_test))
+
+        x_test, y_test = preprocess(x2, y2, image_size=image_size)
+
+    models_all = glob(model_path+"/*.hdf5")
+    models_all.sort()
+
+    evaluation_logfile = open(model_path+"/"+type+"_log.csv",'w')
+    evaluation_logfile.write("epoch,"+"dev"+"_acc,"+"dev"+"_loss,"+"dev"+"_mean_absolute_error")
+    if(test_dataset_path):
+        evaluation_logfile.write(","+"test"+"_acc,"+"test"+"_loss,"+"test"+"_mean_absolute_error")
+    evaluation_logfile.write("\n")
+    evaluation_logfile.flush()
+    epoch =0
+
+    for file in models_all:
+
+        model = load_model(file)
+        print("Model Path: " + file)
+        score_dev = model.evaluate(x_val, y_val,batch_size=BATCH_SIZE, verbose=1)
+        evaluation_logfile.write(str(int(epoch)) + "," + str(score_dev[1]) + "," + str(score_dev[0]) + "," + str(score_dev[2]))
+
+        if (test_dataset_path):
+            score_test = model.evaluate(x_test, y_test,batch_size=BATCH_SIZE, verbose=1)
+            evaluation_logfile.write(","+str(score_test[1])+","+str(score_test[0])+","+str(score_test[2]))
+
+        evaluation_logfile.write("\n")
+        evaluation_logfile.flush()
+        epoch = epoch + 1
+
+
+
+

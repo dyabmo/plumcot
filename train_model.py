@@ -1,18 +1,16 @@
 from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
-from keras.utils.io_utils import HDF5Matrix
 from keras.utils.np_utils import to_categorical
 import h5py
-from keras.callbacks import ModelCheckpoint, CSVLogger, Callback
-from visual_callbacks import AccLossPlotter, ConfusionMatrixPlotter
+from keras.callbacks import ModelCheckpoint, CSVLogger
+from visual_callbacks import AccLossPlotter
 import sys
-import timeit
 import scipy.misc
 import os
-import matplotlib.pyplot as plt
 import models.MT_IM56_NODROP as mt
 import models.vgg_pretrained as pretrained
+import utils
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -30,25 +28,26 @@ development_no_samples=0
 test_no_samples=0
 index_arr_train = np.zeros((0))
 index_arr_validate = np.zeros((0))
-IMAGE_GENERATOR=False
 TRAINING_FIT_RATIO= 0.1
 NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
 SHUFFLE_BATCHES=True
-USE_VALIDATION = True
-TRAINING_RATIO = 0.8
+USE_VALIDATION = False
+TRAINING_RATIO = 1
 VALIDATION_RATIO = 0.1
 
 MODEL_PRETRAINED=False
-
+MODEL_VGG16=True
 MODEL_MT=False
 TRAINING_RATIO_MT = 0.2
 SEQUENCE_LENGTH=25
 STEP=5
-majority_list_true=list()
-majority_list_false=list()
 #To be able to visualize correctly
+
+if USE_VALIDATION==False:
+    TRAINING_RATIO = 1
+
 if VISUALIZE:
     WORKERS = 1
     NB_EPOCH = 1
@@ -74,27 +73,6 @@ def process_arguments():
 
     return training_file,development_file, model_path, image_size, batch_size, output_path
 
-class TimeLogger(Callback):
-
-    def __init__(self, path):
-        self.validation_data = None
-        self.fd = open(path, 'w')
-        self.fd.write("Epoch , Duration in minutes\n")
-        self.fd.flush()
-
-    def on_train_begin(self, logs={}):
-
-        self.start_time = timeit.default_timer()
-
-    def on_epoch_end(self, epoch, logs=None):
-        elapsed = (timeit.default_timer() - self.start_time)/60.0
-        self.fd.write(str(epoch) + ", " + '{:.2f}'.format(elapsed) + "\n")
-        self.fd.flush()
-
-    def on_train_end(self, logs=None):
-        self.fd.flush()
-        self.fd.close()
-
 def set_no_samples(train_dir,dev_dir=None,test_dir=None):
 
     #Set number of samples to calculate: steps_per_epoch automatically
@@ -107,7 +85,6 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
     global test_no_samples
     global index_arr_train
     global index_arr_validate
-
 
     f = h5py.File(train_dir, 'r')
 
@@ -155,132 +132,32 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
         test_no_samples = f.attrs['test_size']
         print("Test number of samples: " + str(test_no_samples))
 
-def compute_majority_class(dir,type='validation',start=0,end=None):
-
-    _, y=load_from_hdf5(dir, type, start=start, end=end, labels_only=True)
-
-    positive_label_percentage =  (np.sum(y) / len(y)) * 100
-
-    return positive_label_percentage
-
-def load_from_hdf5(dir,type,start=0,end=None,labels_only=False):
-
-    X_train, y_train = 0,0
-
-    if(type=="training" or type == "validation"):
-
-        if(labels_only):
-            y_train = HDF5Matrix(dir, 'training_labels', start=start, end=end)
-        else:
-            X_train = HDF5Matrix(dir, 'training_input',start=start,end=end)
-            y_train = HDF5Matrix(dir, 'training_labels',start=start,end=end)
-
-    elif(type=="development"):
-        if(labels_only):
-            y_train = HDF5Matrix(dir, 'development_labels', start=start, end=end)
-        else:
-            X_train = HDF5Matrix(dir, 'development_input',start=start,end=end)
-            y_train = HDF5Matrix(dir, 'development_labels',start=start,end=end)
-
-    elif (type == "test"):
-        if(labels_only):
-            y_train = HDF5Matrix(dir, 'test_labels', start=start, end=end)
-        else:
-            X_train = HDF5Matrix(dir, 'test_input',start=start,end=end)
-            y_train = HDF5Matrix(dir, 'test_labels',start=start,end=end)
-
-    return X_train,y_train
-
-def load_as_numpy_array(dir,type):
-
-    x_dataset,y_dataset = np.empty((0)),np.empty((0))
-    file = h5py.File(dir, 'r')  # 'r' means that hdf5 file is open in read-only mode
-
-    if (type == "training"):
-        x_dataset = np.array(file['training_input'][0:training_no_samples-1])
-        y_dataset = np.array(file['training_labels'][0:training_no_samples-1])
-
-    elif (type == "validation"):
-        x_dataset = np.array(file['training_input'][validation_start: training_no_samples-1])
-        y_dataset = np.array(file['training_labels'][validation_start: training_no_samples-1])
-
-    elif (type == "development"):
-        x_dataset = np.array(file['development_input'])
-        y_dataset = np.array(file['development_labels'])
-
-    elif (type == "test"):
-        x_dataset = np.array(file['test_input'])
-        y_dataset = np.array(file['test_labels'])
-
-    file.close()
-
-    return x_dataset,y_dataset
-
-def random_shuffle_2_arrays(X_train,y_train):
-
-    index = np.arange(X_train.shape[0])
-    #Shuffle inplace
-    np.random.shuffle(index)
-
-    X_train=X_train[index]
-    y_train = y_train[index]
-
-    return X_train, y_train
-
-def random_shuffle_subset( x_train,ratio=1):
-
-    size = x_train.shape[0]
-    # Shuffle inplace
-    np.random.shuffle(x_train)
-
-    subset = int(size*ratio)
-    x_subset = x_train[0: subset]
-
-    return x_subset
-
 def compute_y_mt(y):
 
     #Compute y_mt using the majority of labels in y
     majority = np.sum(y[:,1])
     if majority >= int(SEQUENCE_LENGTH/2):
         y_mt=np.array([0,1])
-        #majority_list_true.append(majority)
     else:
         y_mt=np.array([1,0])
-        #majority_list_false.append(majority)
-
-
-    #print(np.mean(majority_list_true))
-    #print(np.mean(majority_list_false))
-
 
     return y_mt
 
 def prepare_mt(x,y):
 
-    #print("Entered prepare_mt")
     # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
 
     length = len(x)
-    #print(length)
     length = length - (length % STEP)
 
     no_samples = int( ((length - SEQUENCE_LENGTH)/STEP) ) + 1
-    #print(no_samples)
     x = x[0:length]
-    #print(x.shape)
 
     x_mt = x[0:SEQUENCE_LENGTH,:,:,:]
-    #print(x_mt.shape)
     x_mt=x_mt.reshape((1,SEQUENCE_LENGTH, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
-    #print(x_mt.shape)
 
     #Compute y_mt using the majority of labels in y
-    #print(y.shape)
-    #print(y[0:SEQUENCE_LENGTH,:])
     y_mt = compute_y_mt(y[0:SEQUENCE_LENGTH,:])
-    #print(y_mt)
-    #print(y_mt.shape)
 
     for i in range(no_samples - 1):
 
@@ -292,10 +169,6 @@ def prepare_mt(x,y):
         # Compute y_mt using the majority of labels in y
         y_mt_next = compute_y_mt(y[start:start+SEQUENCE_LENGTH,:])
         y_mt = np.vstack((y_mt,y_mt_next))
-
-    #print(x_mt.shape)
-    #print(y_mt.shape)
-    #print(y_mt)
 
     return x_mt,y_mt
 
@@ -322,11 +195,8 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
             #Only facetracks of length bigger than SEQUENCE_LENGTH will be used
             if index_arr[i] < SEQUENCE_LENGTH:
                 i=i+1
-                #print("Entered the If")
 
             else:
-                #print("Entered the else")
-
                 #Only in the initial case
                 if i==0:
                     start=0
@@ -342,10 +212,8 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                     start = start + validation_offset
                     end = end + validation_offset
 
-                #print("Start: "+ str(start))
-                #print("End: "+str(end))
                 #Do once at the beginning
-                x, y = load_from_hdf5(file, type=type, start=start, end=end)
+                x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
                 x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
                 x_train,y_train = prepare_mt(x_train_processed,y_train_processed)
 
@@ -380,7 +248,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                             start = start + validation_offset
                             end = end + validation_offset
 
-                        x, y = load_from_hdf5(file, type=type, start=start, end=end)
+                        x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
                         x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
                         x_train_next, y_train_next = prepare_mt(x_train_processed, y_train_processed)
 
@@ -389,11 +257,6 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
 
                         i = i + 1
 
-                #print("After while loop")
-                #print(x_train.shape)
-                #print(y_train.shape)
-                #After breaking the whole loop, we are sure that the x_train length is bigger than batch size
-                #compute how many batches does it have:
                 length = len(x_train)
                 batches = int(length / BATCH_SIZE)
 
@@ -416,14 +279,10 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                     input_list=list()
                     for k in range(SEQUENCE_LENGTH):
                         input_list.append(x_train_batch[:,k,:,:,:])
-                    #print("YIELD")
-                    #print(y_train_batch.shape)
-                    #print(len(input_list))
-                    #print(input_list[0].shape)
-                    yield (input_list, y_train_batch)
 
-                #to save the place where we stopped in the middle of a facetrack, to use the remaining in next batch
-                #facetrack_stopping_index = len(x_train) - (BATCH_SIZE * STEP)
+                    if VISUALIZE: utils.visualize_mt(input_list, y_train_batch, i, type)
+
+                    yield (input_list, y_train_batch)
 
 def generate_imges_from_hdf5(file,image_size,type="training"):
 
@@ -450,46 +309,16 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
         for i in range(rand_index.shape[0]):
             #Choose a random batch
-            x,y = load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
+            x,y = utils.load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
             x_train, y_train = preprocess(x,y,image_size=image_size)
 
             #Visualize 1/8 images out of each batch
-            if VISUALIZE: visualize(x_train, y_train,i,type)
+            if VISUALIZE: utils.visualize(x_train, y_train,i,type,batch_size=BATCH_SIZE,greyscale=False)
 
             yield (x_train, y_train)
 
         print("\ni is: " + str(i) +" ("+type+")")
-
-
-def visualize(x_train,y_train,i,type):
-
-    index = BATCH_SIZE // 8
-    for j in range(0, index):
-        plt.subplot(index // 2, index // 2, j + 1)
-
-        image = x_train[j * 8]
-
-        if GREYSCALE:
-            image = image.reshape((x_train.shape[1], x_train.shape[2]))
-            cmap = plt.cm.gray
-            if (not y_train[j * 8][1]):
-                cmap=None
-            plt.imshow(image, cmap=cmap)
-
-        else:
-        # Speaking person will show in RGB, but not inverted colors
-            scale = 1
-            if (not y_train[j * 8][1]):
-                scale = 255
-            plt.imshow( image * scale)
-
-    if(type == "training"):
-        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_training/batch_" + str(i) + ".png")
-    elif(type == "development"):
-        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_eval/batch_" + str(i) + ".png")
-    elif (type == "validation"):
-        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_validation/batch_" + str(i) + ".png")
 
 def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
     # Convert to numpy array
@@ -515,7 +344,7 @@ def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
         x_np_temp = x_np
 
     # Shuffle
-    x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
+    x_train, y_train = utils.random_shuffle_2_arrays(x_np_temp, y_np)
 
     # Perform simple normalization
     if NORMALIZE:
@@ -523,21 +352,11 @@ def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
 
     #Change to greyscale if needed
     if GREYSCALE:
-        x_train = rgb2grey(x_train)
+        x_train = utils.rgb2grey(x_train)
 
     #Change y to categorical
     y_train = to_categorical(y_train, num_classes=2)
     return x_train,y_train
-
-
-# Change to greyscale
-def rgb2grey(x):
-
-    r, g, b = x[ : , : , : , 0 ] , x[ : , : , : , 1 ], x[ : , : , : , 2 ]
-    grey = 0.2989 * r + 0.5870 * g + 0.1140 * b
-    grey_reshaped = grey.reshape((x.shape[0],x.shape[1],x.shape[2],1))
-
-    return grey_reshaped
 
 def return_sum_samples(index_arr):
 
@@ -580,56 +399,40 @@ if __name__ == "__main__":
         model = mt.get_model(towers_no=SEQUENCE_LENGTH)
     elif MODEL_PRETRAINED:
         model = pretrained.vgg_pretrained()
+    elif MODEL_VGG16:
+        model = pretrained.vgg_pretrained(weights=None,trainable=True)
     else:
         model = load_model(model_path)
-    #model.summary()
 
-    if(IMAGE_GENERATOR):
-        print("Using Image Generator")
-        x_train, y_train = load_as_numpy_array(dir=training_file, type="training")
-        x_dev, y_dev = load_as_numpy_array(dir=development_file, type="development")
+    if(MODEL_MT):
+        training_generator = generate_images_hdf5_mt(file=training_file, type="training", image_size= image_size)
+        validation_generator =  generate_images_hdf5_mt(file=training_file, type="validation", image_size=image_size)
+    else:
+        #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
+        training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
+        validation_generator = generate_imges_from_hdf5(file=training_file, type="validation",image_size=image_size)
 
-        datagen = ImageDataGenerator(featurewise_center=True,featurewise_std_normalization=True,data_format="channels_last")
-        #, rotation_range = 30., width_shift_range = 0.3, height_shift_range = 0.3, zoom_range = 0.3, horizontal_flip = True, vertical_flip = True
-        size = int(TRAINING_FIT_RATIO*training_no_samples)
-        print("Fit Size: "+str(size))
-        datagen.fit(x_train[0:size])
-        training_generator = datagen.flow(x_train, y_train, batch_size=BATCH_SIZE, shuffle=True)
-        development_generator = datagen.flow(x_dev, y_dev, batch_size=BATCH_SIZE, shuffle=True)
+    development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+
+    if(USE_VALIDATION):
+        dev_val_generator = validation_generator
+        dev_val_steps = validation_steps
+        percentage = utils.compute_majority_class(training_file, type="validation", start=validation_start,
+                                            end=validation_start + validation_no_samples)
+        print("Validation set +ve label percentage: "+str(percentage))
 
     else:
-
-        if(MODEL_MT):
-            training_generator = generate_images_hdf5_mt(file=training_file, type="training", image_size= image_size)
-            validation_generator =  generate_images_hdf5_mt(file=training_file, type="validation", image_size=image_size)
-        else:
-            #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
-            training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
-            validation_generator = generate_imges_from_hdf5(file=training_file, type="validation",image_size=image_size)
-
-        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
-
-        if(USE_VALIDATION):
-            dev_val_generator = validation_generator
-            dev_val_steps = validation_steps
-            percentage = compute_majority_class(training_file, type="validation", start=validation_start,
-                                                end=validation_start + validation_no_samples)
-            print("Validation set +ve label percentage: "+str(percentage))
-
-
-        else:
-            dev_val_generator = development_generator
-            dev_val_steps = development_steps
-            percentage = compute_majority_class(training_file, type="development", start=0,
-                                            end=development_no_samples)
-            print("Development set +ve label percentage: " + str(percentage)) 
+        dev_val_generator = development_generator
+        dev_val_steps = development_steps
+        percentage = utils.compute_majority_class(development_file, type="development", start=0,
+                                        end=development_no_samples)
+        print("Development set +ve label percentage: " + str(percentage))
 
     #list of callbacks:
     plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch',percentage=percentage)
     csv_logger  = CSVLogger(output_path+"csv_logger.csv")
-    time_logger = TimeLogger(output_path+"time_logger.csv")
+    time_logger = utils.TimeLogger(output_path+"time_logger.csv")
     checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
     callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
-
 
     model.fit_generator(training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)

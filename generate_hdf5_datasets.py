@@ -40,66 +40,6 @@ def get_numpy_files(dir, names_list):
 
     return flattened_Xv_array, flattened_Y_array
 
-def test(dir,output_file,type="training"):
-
-    # validate shape along saving file to save time
-    validate = True
-
-    #If type is training, must do a special handling to split to validation set
-    if(type=="training"):
-        #Set training and validation video names, to be able to add the validation videos in the end
-        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
-        all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
-
-        #Exclude validation file names from list of all names to get training names
-        training_only_list = [val for val in all_list if val not in validation_list]
-
-        #Shuffle training set with respect to videos
-        random.shuffle(training_only_list)
-
-        #get numpy arrays for training and validation
-        train_x_fnames, train_y_fnames = get_numpy_files(dir, training_only_list)
-        validation_x_fnames, validation_y_fnames = get_numpy_files(dir, validation_list)
-
-        if PRINT_HISTOGRAM:
-            histogram = dict()
-            discard=0
-            for f in train_x_fnames:
-                array= np.load(f)
-                length = len(array)
-
-                if length in histogram:
-                    histogram[length]+=1
-                else:
-                    histogram[length]=1
-
-                if(length < SEQUENCE_LENGTH):
-                    discard+=1
-            print("Percentage of numpy arrays to be discarded(because they are smaller than 25)\n")
-            percentage = discard/len(train_x_fnames) * 100.
-            print(percentage)
-            print("Histogram\n")
-            print(histogram)
-
-            for f in train_x_fnames:
-                array = np.load(f)
-                length = len(array)
-                print(length)
-                if(length >=SEQUENCE_LENGTH):
-
-                    #change length to be multiple of 25
-                    length = length - (length % SEQUENCE_LENGTH)
-                    print(length)
-                    no_samples = int(length/SEQUENCE_LENGTH )
-                    print(no_samples)
-                    array=array[0:length]
-                    print(array.shape)
-                    array = array.reshape((no_samples,SEQUENCE_LENGTH, array.shape[1], array.shape[2],array.shape[3]))
-                    print(array.shape)
-                    #print(array)
-
-    return validate
-
 def save_to_hdf5(dir,output_file,type="training"):
 
     # validate shape along saving file to save time
@@ -146,16 +86,27 @@ def save_to_hdf5(dir,output_file,type="training"):
         print(index_arr)
 
     #If type is development or test, handle normally
-    elif (type == "development" or type == "test"):
+    elif (type == "development" or type == "test" or type == "training_old"):
         # Get x
         x_fnames = glob(dir + "/*.Xv.npy")
         x_fnames.sort()
-        x_arrays = [np.load(f) for f in x_fnames]
-        x_dataset = np.concatenate(x_arrays)
-
         # Get y
         y_fnames = glob(dir + "/*.Y.npy")
         y_fnames.sort()
+
+        x_names_list = list(map(lambda x  : x.split('/')[-1].split('.')[0] ,x_fnames))
+        print(x_names_list)
+
+        y_names_list = list(map(lambda x  : x.split('/')[-1].split('.')[0] ,y_fnames))
+        print(y_names_list)
+
+        names =[ val for val in x_fnames if val in y_fnames]
+        print(names)
+
+        x_arrays = [np.load(f) for f in x_fnames]
+        x_dataset = np.concatenate(x_arrays)
+
+
         y_arrays = [np.load(f) for f in y_fnames]
         index_arr = [len(array) for array in y_arrays]
         y_dataset = np.concatenate(y_arrays)
@@ -174,10 +125,10 @@ def save_to_hdf5(dir,output_file,type="training"):
     print(y_dataset.shape)
 
     f = h5py.File(output_file, 'w')
-    #Will be added to any type of files
-    f.create_dataset('index_array', data=index_arr)
 
     if(type == "training"):
+
+        f.create_dataset('index_array', data=index_arr)
 
         f.attrs['train_size'] = x_dataset.shape[0]
         f.create_dataset('index_array_train', data=index_arr_train)
@@ -195,6 +146,17 @@ def save_to_hdf5(dir,output_file,type="training"):
 
         # Creating dataset to store labels
         f.create_dataset('training_labels', data=y_dataset)
+
+    elif (type == "training_old"):
+
+        f.attrs['train_size'] = x_dataset.shape[0]
+
+        # Creating dataset to store features
+        f.create_dataset('training_input', data=x_dataset)
+
+        # Creating dataset to store labels
+        f.create_dataset('training_labels', data=y_dataset)
+
 
     elif (type == "development"):
 
@@ -223,7 +185,7 @@ def save_to_hdf5(dir,output_file,type="training"):
 def process_arguments():
 
     assert len(sys.argv) == 4, "Error with number of arguments: <type> <directory> <outputfile name>"
-    assert (sys.argv[1]=="training" or sys.argv[1]=="development" or sys.argv[1]=="test" )
+    assert (sys.argv[1]=="training" or sys.argv[1]=="development" or sys.argv[1]=="test" or sys.argv[1]=="training_old" )
     assert (os.path.isdir(sys.argv[2])),"Error, directory doesn't exist"
     assert (not os.path.isfile(sys.argv[3])), "Error: file already exists, can't overwrite it"
 

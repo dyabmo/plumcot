@@ -1,16 +1,15 @@
 from keras.models import load_model
-from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 from keras.utils.np_utils import to_categorical
 import h5py
 from keras.callbacks import ModelCheckpoint, CSVLogger
-from visual_callbacks import AccLossPlotter
 import sys
 import scipy.misc
 import os
 import models.MT_IM56_NODROP as mt
 import models.vgg_pretrained as pretrained
 import utils
+from utils import AccLossPlotter, TimeLogger
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -33,9 +32,9 @@ NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
 SHUFFLE_BATCHES=True
-USE_VALIDATION = False
-TRAINING_RATIO = 1
-VALIDATION_RATIO = 0.1
+USE_VALIDATION = True
+TRAINING_RATIO = 0.001
+VALIDATION_RATIO = 0.001
 
 MODEL_PRETRAINED=False
 MODEL_VGG16=True
@@ -431,7 +430,7 @@ if __name__ == "__main__":
     #list of callbacks:
     plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch',percentage=percentage)
     csv_logger  = CSVLogger(output_path+"csv_logger.csv")
-    time_logger = utils.TimeLogger(output_path+"time_logger.csv")
+    time_logger = TimeLogger(output_path+"time_logger.csv")
     checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
     callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
 

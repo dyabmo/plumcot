@@ -34,39 +34,6 @@ def process_arguments():
 
     return model_path,type, image_size, evaluated_dataset_path, test_dataset_path
 
-def preprocess(x_np,y_np,image_size=DEFAULT_IMAGE_SIZE):
-
-    #If image size is 112*112 or 56*112: first I must resize 224*224 to 112*112
-    if (image_size == IMAGE_SIZE_112 ):
-
-        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, x_np.shape[0]):
-            x_np_temp[j] = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
-
-    #If the requested image size was originally 56*112, then crop lower part of image, hopefully capturing the mouth, discard the upper one.
-    elif(image_size == IMAGE_SIZE_56 ):
-
-        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, x_np.shape[0]):
-            temp = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
-            x_np_temp[j] = temp[IMAGE_SIZE_56: IMAGE_SIZE_112 , :, :]
-
-    elif (image_size == DEFAULT_IMAGE_SIZE):
-        x_np_temp = x_np
-
-    # Perform simple normalization
-    if NORMALIZE:
-        x_np_temp = np.divide(x_np_temp, 255.0)
-
-    # Change to greyscale if needed
-    if GREYSCALE:
-        x_np_temp = utils.rgb2grey(x_np_temp)
-
-    #Change y to categorical
-    y_eval = to_categorical(y_np, num_classes=2)
-
-    return x_np_temp,y_eval
-
 if __name__ == "__main__":
 
     model_path,type, image_size, evaluated_dataset_path, test_dataset_path =  process_arguments()
@@ -78,7 +45,7 @@ if __name__ == "__main__":
     positive_label_percentage_dev = (np.sum(y) / len(y)) * 100
     print("+VE label percentage: {:.2f}".format(positive_label_percentage_dev))
 
-    x_val, y_val = preprocess(x, y, image_size = image_size )
+    x_val, y_val = utils.preprocess(x, y, image_size = image_size,normalize=NORMALIZE,greyscale=GREYSCALE )
 
     if (test_dataset_path):
         print("Test dataset path: " + test_dataset_path)
@@ -89,7 +56,7 @@ if __name__ == "__main__":
 
         print("+VE label percentage: {:.2f}".format(positive_label_percentage_test))
 
-        x_test, y_test = preprocess(x2, y2, image_size=image_size)
+        x_test, y_test = utils.preprocess(x2, y2, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
 
     models_all = glob(model_path+"/*.hdf5")
     models_all.sort()

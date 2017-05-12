@@ -7,6 +7,13 @@ import matplotlib.patches as mpatches
 import timeit
 from keras.callbacks import Callback
 from keras.utils.io_utils import HDF5Matrix
+import scipy.misc
+from keras.utils.np_utils import to_categorical
+
+DEFAULT_IMAGE_SIZE=224
+IMAGE_SIZE_112 = 112
+IMAGE_SIZE_56 = 56
+INPUT_CHANNEL=3
 
 class TimeLogger(Callback):
 
@@ -206,6 +213,44 @@ def visualize(x_train,y_train,i,type,batch_size,greyscale):
 
 def visualize_mt(input_list, y_train_batch, i, type):
     raise NotImplementedError("Visualization not implemented yet")
+
+def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False):
+    # Convert to numpy array
+    x_np = np.array(x)
+    y_np = np.array(y)
+
+    #If image size is 112*112 or 56*112: first I must resize 224*224 to 112*112
+    if (image_size == IMAGE_SIZE_112 ):
+
+        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, x_np.shape[0]):
+            x_np_temp[j] = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
+
+    #If the requested image size was originally 56*112, then crop lower part of image, hopefully capturing the mouth, discard the upper one.
+    elif(image_size == IMAGE_SIZE_56 ):
+
+        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
+        for j in range(0, x_np.shape[0]):
+            temp = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
+            x_np_temp[j] = temp[IMAGE_SIZE_56: IMAGE_SIZE_112 , :, :]
+
+    elif (image_size == DEFAULT_IMAGE_SIZE):
+        x_np_temp = x_np
+
+    # Shuffle
+    x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
+
+    # Perform simple normalization
+    if normalize:
+        x_train = np.divide(x_train, 255.0)
+
+    #Change to greyscale if needed
+    if greyscale:
+        x_train = rgb2grey(x_train)
+
+    #Change y to categorical
+    y_train = to_categorical(y_train, num_classes=2)
+    return x_train,y_train
 
 def random_shuffle_subset( x_train,ratio=1):
 

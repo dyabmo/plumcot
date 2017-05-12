@@ -1,10 +1,8 @@
 from keras.models import load_model
 import numpy as np
-from keras.utils.np_utils import to_categorical
 import h5py
 from keras.callbacks import ModelCheckpoint, CSVLogger
 import sys
-import scipy.misc
 import os
 import models.MT_IM56_NODROP as mt
 import models.vgg_pretrained as pretrained
@@ -33,11 +31,11 @@ VISUALIZE=False
 GREYSCALE=False
 SHUFFLE_BATCHES=True
 USE_VALIDATION = True
-TRAINING_RATIO = 0.001
-VALIDATION_RATIO = 0.001
+TRAINING_RATIO = 0.8
+VALIDATION_RATIO = 0.1
 
 MODEL_PRETRAINED=False
-MODEL_VGG16=True
+MODEL_VGG16=False
 MODEL_MT=False
 TRAINING_RATIO_MT = 0.2
 SEQUENCE_LENGTH=25
@@ -213,7 +211,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
 
                 #Do once at the beginning
                 x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
-                x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
+                x_train_processed, y_train_processed = utils.preprocess(x, y, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
                 x_train,y_train = prepare_mt(x_train_processed,y_train_processed)
 
                 #concatenate remaining samples from previous iteration if they exist
@@ -248,7 +246,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                             end = end + validation_offset
 
                         x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
-                        x_train_processed, y_train_processed = preprocess(x, y, image_size=image_size)
+                        x_train_processed, y_train_processed = utils.preprocess(x, y, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
                         x_train_next, y_train_next = prepare_mt(x_train_processed, y_train_processed)
 
                         x_train = np.concatenate((x_train,x_train_next))
@@ -310,7 +308,7 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             #Choose a random batch
             x,y = utils.load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
-            x_train, y_train = preprocess(x,y,image_size=image_size)
+            x_train, y_train = utils.preprocess(x,y,image_size=image_size)
 
             #Visualize 1/8 images out of each batch
             if VISUALIZE: utils.visualize(x_train, y_train,i,type,batch_size=BATCH_SIZE,greyscale=False)
@@ -318,44 +316,6 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             yield (x_train, y_train)
 
         print("\ni is: " + str(i) +" ("+type+")")
-
-def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE):
-    # Convert to numpy array
-    x_np = np.array(x)
-    y_np = np.array(y)
-
-    #If image size is 112*112 or 56*112: first I must resize 224*224 to 112*112
-    if (image_size == IMAGE_SIZE_112 ):
-
-        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_112, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, x_np.shape[0]):
-            x_np_temp[j] = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
-
-    #If the requested image size was originally 56*112, then crop lower part of image, hopefully capturing the mouth, discard the upper one.
-    elif(image_size == IMAGE_SIZE_56 ):
-
-        x_np_temp = np.empty((x_np.shape[0], IMAGE_SIZE_56, IMAGE_SIZE_112, INPUT_CHANNEL))
-        for j in range(0, x_np.shape[0]):
-            temp = scipy.misc.imresize(x_np[j], (IMAGE_SIZE_112, IMAGE_SIZE_112))
-            x_np_temp[j] = temp[IMAGE_SIZE_56: IMAGE_SIZE_112 , :, :]
-
-    elif (image_size == DEFAULT_IMAGE_SIZE):
-        x_np_temp = x_np
-
-    # Shuffle
-    x_train, y_train = utils.random_shuffle_2_arrays(x_np_temp, y_np)
-
-    # Perform simple normalization
-    if NORMALIZE:
-        x_train = np.divide(x_train, 255.0)
-
-    #Change to greyscale if needed
-    if GREYSCALE:
-        x_train = utils.rgb2grey(x_train)
-
-    #Change y to categorical
-    y_train = to_categorical(y_train, num_classes=2)
-    return x_train,y_train
 
 def return_sum_samples(index_arr):
 

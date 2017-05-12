@@ -74,6 +74,12 @@ def save_to_hdf5(dir,output_file,type="training"):
         x_train_arrays=[np.load(f) for f in train_x_fnames]
         x_train_arrays=np.concatenate(x_train_arrays)
 
+        #shuffle training video samples inplace
+        index = np.arange(x_train_arrays.shape[0])
+        np.random.shuffle(index)
+        x_train_arrays = x_train_arrays[index]
+        y_train_arrays = y_train_arrays[index]
+
         x_validate_arrays=[np.load(f) for f in validation_x_fnames]
         x_validate_arrays=np.concatenate(x_validate_arrays)
 
@@ -106,10 +112,16 @@ def save_to_hdf5(dir,output_file,type="training"):
         x_arrays = [np.load(f) for f in x_fnames]
         x_dataset = np.concatenate(x_arrays)
 
-
         y_arrays = [np.load(f) for f in y_fnames]
-        index_arr = [len(array) for array in y_arrays]
         y_dataset = np.concatenate(y_arrays)
+
+        # shuffle training video samples inplace but keep validation set intact.
+        size_to_shuffle = int(x_dataset.shape[0] * 0.8)
+        index_to_shuffle = np.arange(size_to_shuffle)
+        np.random.shuffle(index_to_shuffle)
+        x_dataset[0:size_to_shuffle] = x_dataset[index_to_shuffle]
+        y_dataset[0:size_to_shuffle] = y_dataset[index_to_shuffle]
+        print("Shape should still be: "+str(x_dataset.shape[0]))
 
     #validate x_dataset shape
     if (x_dataset.shape[1] != INPUT_WIDTH or x_dataset.shape[2] != INPUT_HEIGHT or x_dataset.shape[3] != INPUT_CHANNEL):

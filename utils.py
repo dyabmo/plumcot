@@ -15,6 +15,20 @@ IMAGE_SIZE_112 = 112
 IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 
+def log_description(path,training_ratio,validation_ratio,model_path,dataset_path,validation_used,batch_size=32):
+
+    description = open(path+"/description" ,'w')
+    description.write("Model used: "+str(model_path)+"\n")
+    description.write("Training set used: "+str(dataset_path)+"\n")
+    description.write("Training size: {:.1f}%\n".format(training_ratio*100))
+    if(validation_used):
+        description.write("Validation set is used. Size: {:.1f}%\n".format(validation_ratio * 100))
+    else:
+        description.write("Development set is used\n")
+    description.write(("Batch size: {}\n".format(batch_size)))
+    description.flush()
+    description.close()
+
 class TimeLogger(Callback):
 
     def __init__(self, path):
@@ -237,20 +251,17 @@ def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False)
     elif (image_size == DEFAULT_IMAGE_SIZE):
         x_np_temp = x_np
 
-    # Shuffle
-    x_train, y_train = random_shuffle_2_arrays(x_np_temp, y_np)
-
     # Perform simple normalization
     if normalize:
-        x_train = np.divide(x_train, 255.0)
+        x_np_temp = np.divide(x_np_temp, 255.0)
 
     #Change to greyscale if needed
     if greyscale:
-        x_train = rgb2grey(x_train)
+        x_np_temp = rgb2grey(x_np_temp)
 
     #Change y to categorical
-    y_train = to_categorical(y_train, num_classes=2)
-    return x_train,y_train
+    y_train = to_categorical(y_np, num_classes=2)
+    return x_np_temp,y_train
 
 def random_shuffle_subset( x_train,ratio=1):
 

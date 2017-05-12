@@ -57,7 +57,7 @@ def process_arguments():
     assert (os.path.isfile(sys.argv[3])), "Error in model: file doesn't exist."
     assert (sys.argv[4] != 56 or sys.argv[4] != 112 or sys.argv[4] != 224), "Error in Image size: must be either 56:(56*112), 112:(112*112) or 224:(224*224)"
     assert (int(sys.argv[5]) % 2 == 0), "Error in batch size."
-    assert (os.path.isdir(sys.argv[6])), "Error in output folder: folder doesn't exist."
+    assert (not os.path.isdir(sys.argv[6])), "Error in output folder: folder already exists, can't overwrite."
 
     training_file = sys.argv[1]
     development_file = sys.argv[2]
@@ -67,6 +67,8 @@ def process_arguments():
     output_path = sys.argv[6]
     if (output_path[-1] != "/"):
         output_path = output_path + "/"
+
+    os.mkdir(output_path)
 
     return training_file,development_file, model_path, image_size, batch_size, output_path
 
@@ -299,10 +301,10 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
     #Randomize which batch to get
     rand_index = np.arange(start=0, stop =index - BATCH_SIZE, step = BATCH_SIZE)
 
-    if SHUFFLE_BATCHES:
-        np.random.shuffle(rand_index)
-
     while 1:
+
+        if SHUFFLE_BATCHES:
+            np.random.shuffle(rand_index)
 
         for i in range(rand_index.shape[0]):
             #Choose a random batch
@@ -353,6 +355,9 @@ if __name__ == "__main__":
     #Set global variables
     set_no_samples(training_file, development_file)
     steps_per_epoch_train,validation_steps, development_steps = calculate_steps_per_epoch();
+
+    utils.log_description(path=output_path,training_ratio=TRAINING_RATIO,validation_ratio=VALIDATION_RATIO,
+                          model_path=model_path,dataset_path=training_file,validation_used=USE_VALIDATION,batch_size=BATCH_SIZE)
 
     if MODEL_MT:
         model = mt.get_model(towers_no=SEQUENCE_LENGTH)

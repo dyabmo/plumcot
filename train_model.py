@@ -8,6 +8,7 @@ import models.MT_IM56_NODROP as mt
 import models.vgg_pretrained as pretrained
 import utils
 from utils import AccLossPlotter, TimeLogger
+from keras.preprocessing.image import ImageDataGenerator
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -26,6 +27,8 @@ test_no_samples=0
 index_arr_train = np.zeros((0))
 index_arr_validate = np.zeros((0))
 TRAINING_FIT_RATIO= 0.1
+IMAGE_GENERATOR = True
+IMAGE_GENERATOR_FACTOR = 10
 NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
@@ -291,6 +294,11 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
     if(type=="training"):
         index = training_no_samples
 
+        if IMAGE_GENERATOR:
+            datagen = ImageDataGenerator(rotation_range=20., width_shift_range=0.3, height_shift_range=0.3,
+                                         zoom_range=0.3, horizontal_flip=False, vertical_flip=False,
+                                         data_format="channels_last")
+
     elif (type == "validation"):
         index = validation_no_samples
         offset= validation_start
@@ -315,7 +323,17 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             #Visualize 1/8 images out of each batch
             if VISUALIZE: utils.visualize(x_train, y_train,i,type,batch_size=BATCH_SIZE,greyscale=False)
 
-            yield (x_train, y_train)
+            if IMAGE_GENERATOR and type=="training":
+                j=-1
+                for x_train_datagen,y_train_datagen in datagen.flow(x_train,y_train, batch_size=BATCH_SIZE,save_to_dir="/home/dyab/plumcot/visualze",save_prefix="Batch_"+str(i)):
+                    j+=1
+                    yield (x_train_datagen,y_train_datagen)
+
+                    if j == IMAGE_GENERATOR_FACTOR-1:
+                        break;
+
+            else:
+                yield (x_train, y_train)
 
         print("\ni is: " + str(i) +" ("+type+")")
 
@@ -345,6 +363,9 @@ def calculate_steps_per_epoch():
         steps_per_epoch_train = int(training_no_samples / BATCH_SIZE)
         validation_steps = int(validation_no_samples / BATCH_SIZE)
         development_steps = int(development_no_samples / BATCH_SIZE)
+
+        if IMAGE_GENERATOR:
+            steps_per_epoch_train*=IMAGE_GENERATOR_FACTOR
 
     return steps_per_epoch_train,validation_steps, development_steps
 

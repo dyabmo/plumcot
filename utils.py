@@ -9,6 +9,7 @@ from keras.callbacks import Callback
 from keras.utils.io_utils import HDF5Matrix
 import scipy.misc
 from keras.utils.np_utils import to_categorical
+from keras.callbacks import ModelCheckpoint, CSVLogger
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -54,7 +55,7 @@ class TimeLogger(Callback):
 class AccLossPlotter(Callback):
     #Plot training Accuracy and Loss values on a Matplotlib graph.
 
-    def __init__(self, graphs=['acc', 'loss'], save_graph=False,path='/vol/work1/dyab/training_models',name='training_acc_loss',percentage=0):
+    def __init__(self, graphs=['acc', 'loss'], save_graph=True,path='/vol/work1/dyab/training_models',name='graph_Epoch',percentage=0):
         self.graphs = graphs
         self.num_subplots = len(graphs)
         self.save_graph = save_graph
@@ -273,3 +274,22 @@ def random_shuffle_subset( x_train,ratio=1):
     x_subset = x_train[0: subset]
 
     return x_subset
+
+def calculate_steps_per_epoch(training_samples,validation_samples,development_samples,batch_size=32, image_generator=False,image_generator_factor=1):
+
+    steps_per_epoch_train = int(training_samples / batch_size)
+    validation_steps = int(validation_samples / batch_size)
+    development_steps = int(development_samples / batch_size)
+
+    if image_generator:
+        steps_per_epoch_train*=image_generator_factor
+
+    return steps_per_epoch_train,validation_steps, development_steps
+
+def get_callabcks_list(output_path,percentage):
+    # list of callbacks:
+    plotter = AccLossPlotter(graphs=['acc', 'loss'], path=output_path, percentage=percentage)
+    csv_logger = CSVLogger(output_path + "csv_logger.csv")
+    time_logger = TimeLogger(output_path + "time_logger.csv")
+    checkpoint = ModelCheckpoint(output_path + "Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1)
+    return [plotter, csv_logger, time_logger, checkpoint]

@@ -1,20 +1,17 @@
 from keras.models import load_model
 import numpy as np
 import h5py
-from keras.callbacks import ModelCheckpoint, CSVLogger
 import sys
 import os
 import models.MT_IM56_NODROP as mt
 import models.vgg_pretrained as pretrained
 import utils
-from utils import AccLossPlotter, TimeLogger
 from keras.preprocessing.image import ImageDataGenerator
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
 IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
-WORKERS=1
 NB_EPOCH = 100
 BATCH_SIZE=32
 training_no_samples=0
@@ -23,16 +20,14 @@ validation_no_samples=0
 validation_no_samples_mt=0
 validation_start=0
 development_no_samples=0
-test_no_samples=0
+development_no_samples_mt=0
 index_arr_train = np.zeros((0))
 index_arr_validate = np.zeros((0))
-TRAINING_FIT_RATIO= 0.1
 IMAGE_GENERATOR = True
-IMAGE_GENERATOR_FACTOR = 10
+IMAGE_GENERATOR_FACTOR = 5
 NORMALIZE=True
 VISUALIZE=False
 GREYSCALE=False
-SHUFFLE_BATCHES=True
 USE_VALIDATION = True
 TRAINING_RATIO = 0.8
 VALIDATION_RATIO = 0.1
@@ -49,7 +44,6 @@ if USE_VALIDATION==False:
     TRAINING_RATIO = 1
 
 if VISUALIZE:
-    WORKERS = 1
     NB_EPOCH = 1
 
 def process_arguments():
@@ -75,7 +69,7 @@ def process_arguments():
 
     return training_file,development_file, model_path, image_size, batch_size, output_path
 
-def set_no_samples(train_dir,dev_dir=None,test_dir=None):
+def set_no_samples(train_dir,dev_dir=None):
 
     #Set number of samples to calculate: steps_per_epoch automatically
     global training_no_samples
@@ -84,7 +78,6 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
     global validation_no_samples_mt
     global validation_start
     global development_no_samples
-    global test_no_samples
     global index_arr_train
     global index_arr_validate
 
@@ -129,11 +122,6 @@ def set_no_samples(train_dir,dev_dir=None,test_dir=None):
         development_no_samples = f.attrs['dev_size']
         print("Development number of samples: " + str(development_no_samples))
 
-    if (test_dir):
-        f = h5py.File(test_dir, 'r')
-        test_no_samples = f.attrs['test_size']
-        print("Test number of samples: " + str(test_no_samples))
-
 def compute_y_mt(y):
 
     #Compute y_mt using the majority of labels in y
@@ -148,7 +136,6 @@ def compute_y_mt(y):
 def prepare_mt(x,y):
 
     # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
-
     length = len(x)
     length = length - (length % STEP)
 
@@ -183,6 +170,9 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
     elif (type == "validation"):
         validation_offset= validation_start
         index_arr = index_arr_validate
+
+    elif (type == "development"):
+        raise NotImplementedError("NOT IMPLEMENTED")
 
     while 1:
 
@@ -296,7 +286,7 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
         if IMAGE_GENERATOR:
             datagen = ImageDataGenerator(rotation_range=20., width_shift_range=0.3, height_shift_range=0.3,
-                                         zoom_range=0.3, horizontal_flip=False, vertical_flip=False,
+                                         zoom_range=0.3,shear_range=0.2, horizontal_flip=False, vertical_flip=False,
                                          data_format="channels_last")
 
     elif (type == "validation"):
@@ -311,8 +301,8 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
     while 1:
 
-        if SHUFFLE_BATCHES:
-            np.random.shuffle(rand_index)
+        #Shuffle batches each epoch
+        np.random.shuffle(rand_index)
 
         for i in range(rand_index.shape[0]):
             #Choose a random batch
@@ -325,7 +315,7 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
             if IMAGE_GENERATOR and type=="training":
                 j=-1
-                for x_train_datagen,y_train_datagen in datagen.flow(x_train,y_train, batch_size=BATCH_SIZE,save_to_dir="/home/dyab/plumcot/visualze",save_prefix="Batch_"+str(i)):
+                for x_train_datagen,y_train_datagen in datagen.flow(x_train,y_train, batch_size=BATCH_SIZE):
                     j+=1
                     yield (x_train_datagen,y_train_datagen)
 
@@ -350,35 +340,12 @@ def return_sum_samples(index_arr):
 
     return sum_samples
 
-def calculate_steps_per_epoch():
-
-    if MODEL_MT:
-
-        steps_per_epoch_train = int(training_no_samples_mt / BATCH_SIZE)
-        validation_steps = int(validation_no_samples_mt / BATCH_SIZE)
-        development_steps=0
-
-    else:
-
-        steps_per_epoch_train = int(training_no_samples / BATCH_SIZE)
-        validation_steps = int(validation_no_samples / BATCH_SIZE)
-        development_steps = int(development_no_samples / BATCH_SIZE)
-
-        if IMAGE_GENERATOR:
-            steps_per_epoch_train*=IMAGE_GENERATOR_FACTOR
-
-    return steps_per_epoch_train,validation_steps, development_steps
-
 if __name__ == "__main__":
 
     training_file, development_file, model_path, image_size, BATCH_SIZE, output_path = process_arguments()
 
     #Set global variables
     set_no_samples(training_file, development_file)
-    steps_per_epoch_train,validation_steps, development_steps = calculate_steps_per_epoch();
-
-    utils.log_description(path=output_path,training_ratio=TRAINING_RATIO,validation_ratio=VALIDATION_RATIO,
-                          model_path=model_path,dataset_path=training_file,validation_used=USE_VALIDATION,batch_size=BATCH_SIZE)
 
     if MODEL_MT:
         model = mt.get_model(towers_no=SEQUENCE_LENGTH)
@@ -390,14 +357,21 @@ if __name__ == "__main__":
         model = load_model(model_path)
 
     if(MODEL_MT):
+        steps_per_epoch_train, validation_steps, development_steps = \
+            utils.calculate_steps_per_epoch(training_no_samples_mt,validation_no_samples_mt,development_no_samples_mt,batch_size=BATCH_SIZE,
+                                      image_generator=IMAGE_GENERATOR,image_generator_factor=IMAGE_GENERATOR_FACTOR);
+
         training_generator = generate_images_hdf5_mt(file=training_file, type="training", image_size= image_size)
         validation_generator =  generate_images_hdf5_mt(file=training_file, type="validation", image_size=image_size)
+        development_generator = generate_images_hdf5_mt(file=training_file, type="development", image_size=image_size)
     else:
+        steps_per_epoch_train, validation_steps, development_steps = \
+            utils.calculate_steps_per_epoch(training_no_samples, validation_no_samples, development_no_samples,batch_size=BATCH_SIZE,
+                                      image_generator=IMAGE_GENERATOR, image_generator_factor=IMAGE_GENERATOR_FACTOR);
         #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
         training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
         validation_generator = generate_imges_from_hdf5(file=training_file, type="validation",image_size=image_size)
-
-    development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
 
     if(USE_VALIDATION):
         dev_val_generator = validation_generator
@@ -413,11 +387,8 @@ if __name__ == "__main__":
                                         end=development_no_samples)
         print("Development set +ve label percentage: " + str(percentage))
 
-    #list of callbacks:
-    plotter     = AccLossPlotter(graphs=['acc', 'loss'], save_graph=True,path= output_path, name='graph_Epoch',percentage=percentage)
-    csv_logger  = CSVLogger(output_path+"csv_logger.csv")
-    time_logger = TimeLogger(output_path+"time_logger.csv")
-    checkpoint  = ModelCheckpoint(output_path+"Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1, save_best_only=False)
-    callbacks_list = [plotter, csv_logger, time_logger, checkpoint]
+    callbacks_list = utils.get_callabcks_list(output_path=output_path,percentage=percentage)
+    utils.log_description(path=output_path,training_ratio=TRAINING_RATIO,validation_ratio=VALIDATION_RATIO,
+                          model_path=model_path,dataset_path=training_file,validation_used=USE_VALIDATION,batch_size=BATCH_SIZE)
 
     model.fit_generator(training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)

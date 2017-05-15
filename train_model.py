@@ -23,11 +23,12 @@ development_no_samples=0
 development_no_samples_mt=0
 index_arr_train = np.zeros((0))
 index_arr_validate = np.zeros((0))
-IMAGE_GENERATOR = True
+IMAGE_GENERATOR = False
 IMAGE_GENERATOR_FACTOR = 5
 NORMALIZE=True
 VISUALIZE=False
-GREYSCALE=False
+GREYSCALE=True
+FLATTEN=False
 USE_VALIDATION = True
 TRAINING_RATIO = 0.8
 VALIDATION_RATIO = 0.1
@@ -308,7 +309,7 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             #Choose a random batch
             x,y = utils.load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
-            x_train, y_train = utils.preprocess(x,y,image_size=image_size)
+            x_train, y_train = utils.preprocess(x,y,image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE,flatten=FLATTEN)
 
             #Visualize 1/8 images out of each batch
             if VISUALIZE: utils.visualize(x_train, y_train,i,type,batch_size=BATCH_SIZE,greyscale=False)
@@ -388,7 +389,7 @@ if __name__ == "__main__":
         print("Development set +ve label percentage: " + str(percentage))
 
     callbacks_list = utils.get_callabcks_list(output_path=output_path,percentage=percentage)
-    utils.log_description(path=output_path,training_ratio=TRAINING_RATIO,validation_ratio=VALIDATION_RATIO,
-                          model_path=model_path,dataset_path=training_file,validation_used=USE_VALIDATION,batch_size=BATCH_SIZE)
+    utils.log_description(model=model,path=output_path,training_ratio=TRAINING_RATIO,validation_ratio=VALIDATION_RATIO,
+                          model_path=model_path,dataset_path=training_file,validation_used=USE_VALIDATION,batch_size=BATCH_SIZE,data_augmentation=IMAGE_GENERATOR)
 
     model.fit_generator(training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)

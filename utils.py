@@ -10,16 +10,16 @@ from keras.utils.io_utils import HDF5Matrix
 import scipy.misc
 from keras.utils.np_utils import to_categorical
 from keras.callbacks import ModelCheckpoint, CSVLogger
+import sys
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
 IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 
-def log_description(path,training_ratio,validation_ratio,model_path,dataset_path,validation_used,batch_size=32):
+def log_description(model,path,training_ratio,validation_ratio,model_path,dataset_path,validation_used,batch_size=32,data_augmentation=False):
 
     description = open(path+"/description" ,'w')
-    description.write("Model used: "+str(model_path)+"\n")
     description.write("Training set used: "+str(dataset_path)+"\n")
     description.write("Training size: {:.1f}%\n".format(training_ratio*100))
     if(validation_used):
@@ -27,6 +27,21 @@ def log_description(path,training_ratio,validation_ratio,model_path,dataset_path
     else:
         description.write("Development set is used\n")
     description.write(("Batch size: {}\n".format(batch_size)))
+
+    if(data_augmentation):
+        description.write("Data Augmentation is used\n")
+
+    description.write("===============================================\n")
+    description.write("Model used: "+str(model_path)+"\n")
+    description.write("Model Summary:\n")
+    description.flush()
+
+    #redirect output of model.summary() to description file
+    sys.stdout = open(path+"/description" , "a")
+    model.summary()
+    sys.stdout = sys.__stdout__
+    #end of redirection
+
     description.flush()
     description.close()
 
@@ -229,7 +244,7 @@ def visualize(x_train,y_train,i,type,batch_size,greyscale):
 def visualize_mt(input_list, y_train_batch, i, type):
     raise NotImplementedError("Visualization not implemented yet")
 
-def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False):
+def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False,flatten=False):
     # Convert to numpy array
     x_np = np.array(x)
     y_np = np.array(y)
@@ -259,6 +274,9 @@ def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False)
     #Change to greyscale if needed
     if greyscale:
         x_np_temp = rgb2grey(x_np_temp)
+
+    if flatten:
+        x_np_temp = np.vstack([x.flatten() for x in x_np_temp])
 
     #Change y to categorical
     y_train = to_categorical(y_np, num_classes=2)

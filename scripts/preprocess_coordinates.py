@@ -18,12 +18,17 @@ def preprocess_arguments():
     y_labels = sys.argv[2]
     output_directory = sys.argv[3]
 
+    if (y_labels[-1] != "/"):
+        y_labels = y_labels + "/"
+
+    if (output_directory[-1] != "/"):
+        output_directory = output_directory + "/"
+
     return face_landmarks, y_labels, output_directory
 
 def compute_coordinates(raw_coordinates):
 
     coordinates_list = list()
-
 
     #raw_coordinates -> (c0,c1), (c2,c3), ...#
     #Transform this way for more readably computations
@@ -49,39 +54,39 @@ def compute_coordinates(raw_coordinates):
     coordinates  = np.asarray(coordinates_list)
     return coordinates
 
-def preprocess(face_landmarks_dir,y_labels_dir,output_directory):
-
-    face_landmarks_names = glob(face_landmarks_dir+"/*.landmarks.txt")
+def preprocess(face_landmarks_name,y_labels_dir,output_directory):
 
     #loop on each video using its name
-    for face_landmarks_name in face_landmarks_names:
+    #for face_landmarks_name in face_landmarks_names:
 
-        print(face_landmarks_name)  #load landmark file
-        face_landmarks_numpy_array = np.loadtxt(face_landmarks_name,dtype=np.float32)
+    print(face_landmarks_name)  #load landmark file
+    face_landmarks_numpy_array = np.loadtxt(face_landmarks_name,dtype=np.float32)
 
-        video_name = face_landmarks_name.split("/")[LAST_INDEX].split(".")[0]
+    video_name = face_landmarks_name.split("/")[LAST_INDEX].split(".")[0]
 
-        #Extract all Y numpy arrays ( all facetrack files) relevant to that file only
-        y_numpy_arrays_names = glob(y_labels_dir+video_name+ "*.Y.npy")
+    #Extract all Y numpy arrays ( all facetrack files) relevant to that file only
+    y_numpy_arrays_names = glob(y_labels_dir+video_name+ "*.Y.npy")
 
-        #get the list of facetracks ids
-        y_numpy_arrays = list(map(lambda y: y.split("/")[LAST_INDEX].split(".")[1], y_numpy_arrays_names))
+    #get the list of facetracks ids
+    y_numpy_arrays = list(map(lambda y: y.split("/")[LAST_INDEX].split(".")[1], y_numpy_arrays_names))
 
-        #Loop on each facetrack of the current video
-        for y_numpy_array in y_numpy_arrays:
+    #Loop on each facetrack of the current video
+    for y_numpy_array in y_numpy_arrays:
 
-            #print(y_numpy_array)
+        #print(y_numpy_array)
 
-            #Select entries that only correspond the current facetack id from landmarks file
-            boolean  = face_landmarks_numpy_array[:,FACETRACK_INDEX] == int(y_numpy_array)
-            facetrack_data = face_landmarks_numpy_array[boolean]
-            #print(facetrack_data)
+        #Select entries that only correspond the current facetack id from landmarks file
+        boolean  = face_landmarks_numpy_array[:,FACETRACK_INDEX] == int(y_numpy_array)
+        facetrack_data = face_landmarks_numpy_array[boolean]
+        #print(facetrack_data)
 
-            facetrack_length = len(facetrack_data)
-            #print(len(face_landmarks_numpy_array))
-            #print(facetrack_length)
+        facetrack_length = len(facetrack_data)
+        if(facetrack_length!=0):
+        #print(len(face_landmarks_numpy_array))
+        #print(facetrack_length)
 
             Xv = np.zeros((facetrack_length, NUMBER_OF_MOUTH_POINTS * 2), dtype=np.float32)
+            Yv = np.load(y_labels_dir + video_name + "." + str(y_numpy_array) + ".Y.npy")
 
             for index in range(facetrack_length):
             #for item in facetrack_data:
@@ -92,10 +97,11 @@ def preprocess(face_landmarks_dir,y_labels_dir,output_directory):
                 #print(coordinates)
                 Xv[index,:] = coordinates
 
-            np.save(output_directory + "/" + video_name + '.' + str(y_numpy_array) + '.XLandmarks.npy', Xv)
+            np.save(output_directory + video_name + '.' + str(y_numpy_array) + '.XLandmarks.npy', Xv)
+            np.save(output_directory + video_name + '.' + str(y_numpy_array) + '.Y.npy',Yv )
 
 if __name__ == "__main__":
 
-    face_landmarks_dir, y_labels_dir, output_directory = preprocess_arguments()
+    face_landmarks, y_labels_dir, output_directory = preprocess_arguments()
 
-    preprocess( face_landmarks_dir, y_labels_dir,output_directory)
+    preprocess(face_landmarks, y_labels_dir,output_directory)

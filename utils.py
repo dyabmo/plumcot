@@ -39,6 +39,7 @@ def log_description(model,path,training_ratio,validation_ratio,model_path,datase
     #redirect output of model.summary() to description file
     sys.stdout = open(path+"/description" , "a")
     model.summary()
+    print(model.optimizer)
     sys.stdout = sys.__stdout__
     #end of redirection
 
@@ -235,16 +236,95 @@ def visualize(x_train,y_train,i,type,batch_size,greyscale):
             plt.imshow( image * scale)
 
     if(type == "training"):
-        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_training/batch_" + str(i) + ".png")
+        plt.savefig("/vol/work1/dyab/samples_visualization/Delete/batch_" + str(i) + ".png")
     elif(type == "development"):
         plt.savefig("/vol/work1/dyab/samples_visualization/cluster_eval/batch_" + str(i) + ".png")
     elif (type == "validation"):
-        plt.savefig("/vol/work1/dyab/samples_visualization/cluster_validation/batch_" + str(i) + ".png")
+        plt.savefig("/vol/work1/dyab/samples_visualization/validation_training_shuffled_samples_shuffled_videos/batch_" + str(i) + ".png")
 
 def visualize_mt(input_list, y_train_batch, i, type):
     raise NotImplementedError("Visualization not implemented yet")
 
-def preprocess(x,y,image_size=DEFAULT_IMAGE_SIZE,normalize=True,greyscale=False,flatten=False):
+def compute_y_mt(y,sequence_length):
+
+    #Compute y_mt using the majority of labels in y
+    majority = np.sum(y[:,1])
+    if majority >= int(sequence_length/2):
+        y_mt=np.array([0,1])
+    else:
+        y_mt=np.array([1,0])
+
+    return y_mt
+
+#TODO: generic for any shape of samples
+#TODO: Optimize that function by remove the intial hassle before the for loop
+def sequence_samples(x, y, sequence_length, step, seq2seq):
+
+    # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
+    length = len(x)
+    length = length - (length % step)
+
+    no_samples = int( ((length - sequence_length)/step) ) + 1
+    x = x[0:length]
+
+    #create generic reshaping
+    ######################################################################
+    new_shape_list = [1,sequence_length]
+    for i in range(1,x.ndim):
+        new_shape_list.append(x.shape[i])
+
+    #create new shape tuple
+    new_shape = tuple(new_shape_list)
+
+    #split x array into two arrays, one from zero to sequence_length and the other from sequence length till the end
+    x_mt,_ = np.split(x,[sequence_length])
+    x_mt = x_mt.reshape(new_shape)
+    ######################################################################
+
+    #x_mt = x[0:sequence_length,:,:,:]
+    #x_mt=x_mt.reshape((1,sequence_length, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
+
+    #If one output label is needed for the sequence, instead of a sequence of outputs
+    if(not seq2seq):
+        #Compute y_mt using the majority of labels in y
+        y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
+
+    for i in range(no_samples - 1):
+
+        start = ((i+1) * step)
+
+        #####################################################################
+        _, x_mt_next, _ = np.split(x, [start,start+sequence_length])
+        x_mt_next = x_mt_next.reshape(new_shape)
+        #####################################################################
+
+        #x_mt_next = x[start:start+sequence_length,:,:,:]
+        #x_mt_next = x_mt_next.reshape((1, sequence_length, x_mt_next.shape[1], x_mt_next.shape[2], x_mt_next.shape[3]))
+        x_mt = np.concatenate((x_mt,x_mt_next))
+
+        # If one output label is needed for the sequence, instead of a sequence of outputs
+        if (not seq2seq):
+            # Compute y_mt using the majority of labels in y
+            y_mt_next = compute_y_mt(y[start:start+sequence_length,:],sequence_length=sequence_length)
+            y_mt = np.vstack((y_mt,y_mt_next))
+
+    return x_mt,y_mt
+
+def preprocess_lstm(x,y,normalize=True):
+
+    # Convert to numpy array
+    x_np = np.array(x)
+    y_np = np.array(y)
+
+    #TODO: Do we need to normalize sth ?
+    # if normalize:
+
+    #Change y to categorical
+    y_train = to_categorical(y_np, num_classes=2)
+    return x_np,y_train
+
+
+def preprocess_cnn(x, y, image_size=DEFAULT_IMAGE_SIZE, normalize=True, greyscale=False, flatten=False):
     # Convert to numpy array
     x_np = np.array(x)
     y_np = np.array(y)

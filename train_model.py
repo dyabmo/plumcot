@@ -27,7 +27,7 @@ IMAGE_GENERATOR = False
 IMAGE_GENERATOR_FACTOR = 5
 NORMALIZE=True
 VISUALIZE=False
-GREYSCALE=True
+GREYSCALE=False
 FLATTEN=False
 USE_VALIDATION = True
 TRAINING_RATIO = 0.8
@@ -46,6 +46,10 @@ if USE_VALIDATION==False:
 
 if VISUALIZE:
     NB_EPOCH = 1
+    GREYSCALE = False
+    IMAGE_GENERATOR=False
+    TRAINING_RATIO = 0.001
+    VALIDATION_RATIO = 0.1
 
 def process_arguments():
 
@@ -123,45 +127,6 @@ def set_no_samples(train_dir,dev_dir=None):
         development_no_samples = f.attrs['dev_size']
         print("Development number of samples: " + str(development_no_samples))
 
-def compute_y_mt(y):
-
-    #Compute y_mt using the majority of labels in y
-    majority = np.sum(y[:,1])
-    if majority >= int(SEQUENCE_LENGTH/2):
-        y_mt=np.array([0,1])
-    else:
-        y_mt=np.array([1,0])
-
-    return y_mt
-
-def prepare_mt(x,y):
-
-    # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
-    length = len(x)
-    length = length - (length % STEP)
-
-    no_samples = int( ((length - SEQUENCE_LENGTH)/STEP) ) + 1
-    x = x[0:length]
-
-    x_mt = x[0:SEQUENCE_LENGTH,:,:,:]
-    x_mt=x_mt.reshape((1,SEQUENCE_LENGTH, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
-
-    #Compute y_mt using the majority of labels in y
-    y_mt = compute_y_mt(y[0:SEQUENCE_LENGTH,:])
-
-    for i in range(no_samples - 1):
-
-        start = ((i+1) * STEP)
-        x_mt_next = x[start:start+SEQUENCE_LENGTH,:,:,:]
-        x_mt_next = x_mt_next.reshape((1, SEQUENCE_LENGTH, x_mt_next.shape[1], x_mt_next.shape[2], x_mt_next.shape[3]))
-        x_mt = np.concatenate((x_mt,x_mt_next))
-
-        # Compute y_mt using the majority of labels in y
-        y_mt_next = compute_y_mt(y[start:start+SEQUENCE_LENGTH,:])
-        y_mt = np.vstack((y_mt,y_mt_next))
-
-    return x_mt,y_mt
-
 def generate_images_hdf5_mt(file,image_size,type="training" ):
 
     if(type=="training"):
@@ -207,8 +172,8 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
 
                 #Do once at the beginning
                 x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
-                x_train_processed, y_train_processed = utils.preprocess(x, y, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
-                x_train,y_train = prepare_mt(x_train_processed,y_train_processed)
+                x_train_processed, y_train_processed = utils.preprocess_cnn(x, y, image_size=image_size, normalize=NORMALIZE, greyscale=GREYSCALE)
+                x_train,y_train = utils.sequence_samples(x_train_processed, y_train_processed, sequence_length=SEQUENCE_LENGTH, step = STEP,seq2seq=False)
 
                 #concatenate remaining samples from previous iteration if they exist
                 if(remaining_samples>0):
@@ -242,8 +207,8 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
                             end = end + validation_offset
 
                         x, y = utils.load_from_hdf5(file, type=type, start=start, end=end)
-                        x_train_processed, y_train_processed = utils.preprocess(x, y, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
-                        x_train_next, y_train_next = prepare_mt(x_train_processed, y_train_processed)
+                        x_train_processed, y_train_processed = utils.preprocess_cnn(x, y, image_size=image_size, normalize=NORMALIZE, greyscale=GREYSCALE)
+                        x_train_next, y_train_next = utils.sequence_samples(x_train_processed, y_train_processed, sequence_length=SEQUENCE_LENGTH, step=STEP,seq2seq=False)
 
                         x_train = np.concatenate((x_train,x_train_next))
                         y_train = np.vstack((y_train,y_train_next))
@@ -309,7 +274,7 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
             #Choose a random batch
             x,y = utils.load_from_hdf5(file, type=type, start=rand_index[i] + offset, end=rand_index[i] + BATCH_SIZE + offset)
             #Proprocess random batch: shuffle samples, rescale values, resize if needed
-            x_train, y_train = utils.preprocess(x,y,image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE,flatten=FLATTEN)
+            x_train, y_train = utils.preprocess_cnn(x, y, image_size=image_size, normalize=NORMALIZE, greyscale=GREYSCALE, flatten=FLATTEN)
 
             #Visualize 1/8 images out of each batch
             if VISUALIZE: utils.visualize(x_train, y_train,i,type,batch_size=BATCH_SIZE,greyscale=False)

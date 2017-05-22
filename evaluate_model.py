@@ -45,7 +45,7 @@ if __name__ == "__main__":
     positive_label_percentage_dev = (np.sum(y) / len(y)) * 100
     print("+VE label percentage: {:.2f}".format(positive_label_percentage_dev))
 
-    x_val, y_val = utils.preprocess(x, y, image_size = image_size,normalize=NORMALIZE,greyscale=GREYSCALE )
+    x_val, y_val = utils.preprocess_cnn(x, y, image_size = image_size, normalize=NORMALIZE, greyscale=GREYSCALE)
 
     if (test_dataset_path):
         print("Test dataset path: " + test_dataset_path)
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
         print("+VE label percentage: {:.2f}".format(positive_label_percentage_test))
 
-        x_test, y_test = utils.preprocess(x2, y2, image_size=image_size,normalize=NORMALIZE,greyscale=GREYSCALE)
+        x_test, y_test = utils.preprocess_cnn(x2, y2, image_size=image_size, normalize=NORMALIZE, greyscale=GREYSCALE)
 
     models_all = glob(model_path+"/*.hdf5")
     models_all.sort()

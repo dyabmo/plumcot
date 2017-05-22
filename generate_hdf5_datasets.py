@@ -5,11 +5,13 @@ import random
 import sys
 import os
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 
 INPUT_WIDTH=224
 INPUT_HEIGHT=224
 INPUT_CHANNEL=3
-input_shape=(INPUT_WIDTH,INPUT_HEIGHT,INPUT_CHANNEL)
+COORDINATES_LENGTH=40
 SEQUENCE_LENGTH=25
 PRINT_HISTOGRAM=False
 SHUFFLE_SAMPLES=False
@@ -29,7 +31,7 @@ def get_numpy_files(dir, names_list):
     Y_array=list()
 
     for item in names_list:
-        Xv_array.append(glob(dir + "/" + item + "*.Xv.npy"))
+        Xv_array.append(glob(dir + "/" + item + "*.XLandmarks.npy"))
         Y_array.append(glob(dir + "/" + item + "*.Y.npy"))
 
     #remove empty entries
@@ -46,8 +48,8 @@ def get_numpy_files(dir, names_list):
     difference1 = [ item for item in x_names if item not in y_names]
     difference2 = [ item for item in y_names if item not in x_names]
     #Should print nothing!
-    print(difference1)
-    print(difference2)
+    #print(difference1)
+    #print(difference2)
 
     return flattened_Xv_array, flattened_Y_array
 
@@ -59,8 +61,7 @@ def save_to_hdf5(dir,output_file,type="training"):
     #If type is training, must do a special handling to split to validation set
     if(type=="training"):
         #Set training and validation video names, to be able to add the validation videos in the end
-        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list_last_videos")
-        #validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
+        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
         all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
 
         #Exclude validation file names from list of all names to get training names
@@ -129,9 +130,17 @@ def save_to_hdf5(dir,output_file,type="training"):
             print("Shape should still be: "+str(x_dataset.shape[0]))
 
     #validate x_dataset shape
-    if (x_dataset.shape[1] != INPUT_WIDTH or x_dataset.shape[2] != INPUT_HEIGHT or x_dataset.shape[3] != INPUT_CHANNEL):
-        validate = False
-        return validate
+    #If it's an image
+    if(x_dataset.ndim==4):
+        if (x_dataset.shape[1] != INPUT_WIDTH or x_dataset.shape[2] != INPUT_HEIGHT or x_dataset.shape[3] != INPUT_CHANNEL):
+            validate = False
+            return validate
+
+    elif(x_dataset.ndim==2):
+        if (x_dataset.shape[1] != COORDINATES_LENGTH):
+            validate = False
+            return validate
+
 
     if (y_dataset.shape[0] != x_dataset.shape[0]):
         print("x_dataset size: " + str(x_dataset.shape[0]) + ", y_dataset size: " + str(y_dataset.shape[0]))
@@ -217,21 +226,20 @@ def plot_histogram(dir,type="training"):
     #If type is training, must do a special handling to split to validation set
     if(type=="training"):
         #Set training and validation video names, to be able to add the validation videos in the end
-        all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list_subset")
+        all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
 
         #get numpy arrays for training and validation
         train_x_fnames, train_y_fnames = get_numpy_files(dir, all_list)
-
-        frames_lengths = [len(np.load(f)) for f in train_y_fnames]
-
-        plt.hist(frames_lengths,bins=500)
-        plt.show()
+        facetracks_size=len(train_x_fnames)
 
         histogram = dict()
         discard=0
+        samples_discard=0
+        total_samples=0
         for f in train_y_fnames:
             array= np.load(f)
             length = len(array)
+            total_samples+=length
 
             if length in histogram:
                 histogram[length]+=1
@@ -240,12 +248,25 @@ def plot_histogram(dir,type="training"):
 
             if(length < SEQUENCE_LENGTH):
                 discard+=1
-        print("Percentage of numpy arrays to be discarded(because they are smaller than 25)\n")
-        percentage = discard/len(train_x_fnames) * 100.
-        print(percentage)
-        print("Histogram\n")
-        print(len(histogram))
-        print(histogram)
+                samples_discard+=length
+
+        percentage = discard / facetracks_size * 100.
+        print("Percentage of facetracks to be discarded(because they are smaller than {}): {:.2f}".format(SEQUENCE_LENGTH,percentage))
+        percentage2 = samples_discard / total_samples * 100.
+        print("Percentage of samples to be discarded: {:.2f}".format(percentage2))
+
+        frames_lengths = [len(np.load(f)) for f in train_y_fnames]
+
+        plt.hist(frames_lengths,bins=len(histogram),cumulative=True,color='green')
+        plt.plot([SEQUENCE_LENGTH,SEQUENCE_LENGTH],[1,facetracks_size],color='r')
+        red_patch = mpatches.Patch(color='red', label='Sequence Length {}\nSamples to discard: {:.2f}%'.format(SEQUENCE_LENGTH,percentage2))
+        blue_patch = mpatches.Patch(color='green',label="Cumulative histogram of facetrack lengths")
+        plt.legend(handles=[red_patch,blue_patch], loc=4)
+        plt.xlabel("Facetracks lengths")
+        plt.ylabel("Number of facetracks")
+        plt.title("Cumulative Histogram of Facetracks")
+
+        plt.show()
 
 if __name__ == "__main__":
 

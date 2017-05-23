@@ -39,7 +39,6 @@ def log_description(model,path,training_ratio,validation_ratio,model_path,datase
     #redirect output of model.summary() to description file
     sys.stdout = open(path+"/description" , "a")
     model.summary()
-    print(model.optimizer)
     sys.stdout = sys.__stdout__
     #end of redirection
 
@@ -256,68 +255,71 @@ def compute_y_mt(y,sequence_length):
 
     return y_mt
 
-#TODO: generic for any shape of samples
-#TODO: Optimize that function by remove the intial hassle before the for loop
 def sequence_samples(x, y, sequence_length, step, seq2seq):
 
-    # If model is multi_tower, change batch size to (32,25,heigh,width,3) (32,2)
-    length = len(x)
-    length = length - (length % step)
-
-    no_samples = int( ((length - sequence_length)/step) ) + 1
-    x = x[0:length]
+    # Group samples in form of sequences, change:
+    #   From: (size, x.shape[0], x.shape[1], ...) (size,2)
+    #   To:   (size/sequence_length, sequence_length, x.shape[0], x.shape[1], ...)  (size/sequence_length, sequence_length , 2)
 
     #create generic reshaping
-    ######################################################################
     new_shape_list = [1,sequence_length]
     for i in range(1,x.ndim):
         new_shape_list.append(x.shape[i])
 
     #create new shape tuple
-    new_shape = tuple(new_shape_list)
+    new_shape_x = tuple(new_shape_list)
+    new_shape_y = (1,sequence_length,2)
 
-    #split x array into two arrays, one from zero to sequence_length and the other from sequence length till the end
-    x_mt,_ = np.split(x,[sequence_length])
-    x_mt = x_mt.reshape(new_shape)
-    ######################################################################
+    #To represent samples as sequences, get rid of the modulus of the step
+    length = len(x)
+    length = length - (length % step)
 
-    #x_mt = x[0:sequence_length,:,:,:]
-    #x_mt=x_mt.reshape((1,sequence_length, x_mt.shape[1], x_mt.shape[2], x_mt.shape[3]))
+    no_samples = int( ((length - sequence_length)/step) ) + 1
+    #Trim list to be equal to calculated length
+    x = x[0:length]
+
+    #create list of indices that they numpy array will be split on
+    new_indices = np.arange(0, length, sequence_length)
+
+    #Incorporate the step size in the sequence indices
+    new_indices_list = [(new_indices + z) for z in range(0, sequence_length, step)]
+
+    #Actually split the array according to the indices
+    new_seq_x = [np.split(x, new_indices) for new_indices in new_indices_list]
+    new_seq_y = [np.split(y, new_indices) for new_indices in new_indices_list]
+
+    #Flatten the list
+    new_seq_x = [val for sublist in new_seq_x for val in sublist]
+    new_seq_y = [val for sublist in new_seq_y for val in sublist]
+
+    #remove arrays of length that is less than sequence length, those are the boundaries of splitting
+    new_seq_x = list(filter(lambda x: len(x) >= sequence_length, new_seq_x))
+    new_seq_y = list(filter(lambda x: len(x) >= sequence_length, new_seq_y))
+
+    #Actually reshape each sequence
+    new_seq_x = [x.reshape(new_shape_x) for x in new_seq_x]
+    new_seq_y = [x.reshape(new_shape_y) for x in new_seq_y]
+
+    new_seq_x = np.concatenate(new_seq_x)
+    new_seq_y = np.vstack(new_seq_y)
 
     #If one output label is needed for the sequence, instead of a sequence of outputs
     if(not seq2seq):
+        raise NotImplementedError("Not implemented")
         #Compute y_mt using the majority of labels in y
         y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
 
-    for i in range(no_samples - 1):
+    return new_seq_x,new_seq_y
 
-        start = ((i+1) * step)
-
-        #####################################################################
-        _, x_mt_next, _ = np.split(x, [start,start+sequence_length])
-        x_mt_next = x_mt_next.reshape(new_shape)
-        #####################################################################
-
-        #x_mt_next = x[start:start+sequence_length,:,:,:]
-        #x_mt_next = x_mt_next.reshape((1, sequence_length, x_mt_next.shape[1], x_mt_next.shape[2], x_mt_next.shape[3]))
-        x_mt = np.concatenate((x_mt,x_mt_next))
-
-        # If one output label is needed for the sequence, instead of a sequence of outputs
-        if (not seq2seq):
-            # Compute y_mt using the majority of labels in y
-            y_mt_next = compute_y_mt(y[start:start+sequence_length,:],sequence_length=sequence_length)
-            y_mt = np.vstack((y_mt,y_mt_next))
-
-    return x_mt,y_mt
-
-def preprocess_lstm(x,y,normalize=True):
+def preprocess_lstm(x,y,normalize=False):
 
     # Convert to numpy array
     x_np = np.array(x)
     y_np = np.array(y)
 
     #TODO: Do we need to normalize sth ?
-    # if normalize:
+    if normalize:
+        raise NotImplementedError("Not implemented")
 
     #Change y to categorical
     y_train = to_categorical(y_np, num_classes=2)
@@ -372,6 +374,78 @@ def random_shuffle_subset( x_train,ratio=1):
     x_subset = x_train[0: subset]
 
     return x_subset
+
+#Return number of samples for specific sequence_length and step based on facetracks size
+def return_sequence_size(index_arr, sequence_length, step):
+
+    sum_samples = 0
+    for i in range(len(index_arr)):
+
+        if (index_arr[i] >= sequence_length):
+
+            face_track_length = index_arr[i]
+            no_samples = int(((face_track_length - sequence_length) / step)) + 1
+            sum_samples = sum_samples + no_samples
+
+    return sum_samples
+
+#TODO: Divide it into two versions, according to: either sue individual samples or sequences of samples.. use facetrack ratio instead of training ratio
+def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio,validation_ratio,sequence_length,step,facetrack_ratio):
+
+    #Set number of samples to calculate: steps_per_epoch automatically
+    training_no_samples = 0
+    training_sequence_no_samples = 0
+    validation_no_samples = 0
+    validation_sequence_no_samples = 0
+    validation_start = 0
+    development_no_samples = 0
+    development_sequence_no_samples = 0
+    index_arr_train = np.zeros((0))
+    index_arr_validate = np.zeros((0))
+
+    f = h5py.File(train_dir, 'r')
+
+    total_training_size = int(f.attrs['train_size'])
+    training_no_samples = int(f.attrs['train_size'] * training_ratio )
+    print("Training file:" + train_dir)
+    print("Total number of training samples: "+str(total_training_size) )
+    print("Training number of samples used(and training end): "+str(training_no_samples))
+
+    if use_seq_model:
+        index_arr_train = np.array(f['index_array_train'])
+        target_index_arr_size = int((len(index_arr_train) * facetrack_ratio))
+        index_arr_train = index_arr_train[0:target_index_arr_size]
+
+        index_arr_validate = np.array(f['index_array_validate'])
+        print(index_arr_train)
+        print(len(index_arr_train))
+
+        training_sequence_no_samples = return_sequence_size(index_arr_train, sequence_length=sequence_length, step=step)
+        print("Number of training samples for sequence based samples: " + str(training_sequence_no_samples))
+
+        validation_sequence_no_samples = return_sequence_size(index_arr_validate, sequence_length=sequence_length, step=step)
+        print("Number of validation samples for sequence based samples: " + str(validation_sequence_no_samples))
+
+    if use_validation:
+        try:
+            validation_no_samples = int(f.attrs['validation_size'])
+            validation_start = int(f.attrs['validation_start'])
+        except Exception:
+            print("Validation set params not found in HDF5 file, computing according to VALIDATION_RATIO...")
+            validation_no_samples = int(validation_ratio * total_training_size )
+            validation_start = total_training_size - validation_no_samples -1
+
+        print("Validation start: " + str(validation_start))
+        print("Validation number of samples: " + str(validation_no_samples))
+
+    if (dev_dir and not use_validation):
+        f = h5py.File(dev_dir, 'r')
+        print("Development file:" + dev_dir)
+        development_no_samples = f.attrs['dev_size']
+        print("Development number of samples: " + str(development_no_samples))
+
+    return training_no_samples, training_sequence_no_samples, validation_no_samples, validation_sequence_no_samples, \
+           validation_start, development_no_samples, development_sequence_no_samples, index_arr_train, index_arr_validate
 
 def calculate_steps_per_epoch(training_samples,validation_samples,development_samples,batch_size=32, image_generator=False,image_generator_factor=1):
 

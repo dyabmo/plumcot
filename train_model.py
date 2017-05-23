@@ -14,15 +14,6 @@ IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 NB_EPOCH = 100
 BATCH_SIZE=32
-training_no_samples=0
-training_no_samples_mt=0
-validation_no_samples=0
-validation_no_samples_mt=0
-validation_start=0
-development_no_samples=0
-development_no_samples_mt=0
-index_arr_train = np.zeros((0))
-index_arr_validate = np.zeros((0))
 IMAGE_GENERATOR = False
 IMAGE_GENERATOR_FACTOR = 5
 NORMALIZE=True
@@ -36,7 +27,7 @@ VALIDATION_RATIO = 0.1
 MODEL_PRETRAINED=False
 MODEL_VGG16=False
 MODEL_MT=False
-TRAINING_RATIO_MT = 0.2
+FACETRACK_RATIO = 0.2
 SEQUENCE_LENGTH=25
 STEP=5
 #To be able to visualize correctly
@@ -74,60 +65,7 @@ def process_arguments():
 
     return training_file,development_file, model_path, image_size, batch_size, output_path
 
-def set_no_samples(train_dir,dev_dir=None):
-
-    #Set number of samples to calculate: steps_per_epoch automatically
-    global training_no_samples
-    global training_no_samples_mt
-    global validation_no_samples
-    global validation_no_samples_mt
-    global validation_start
-    global development_no_samples
-    global index_arr_train
-    global index_arr_validate
-
-    f = h5py.File(train_dir, 'r')
-
-    total_training_size = int(f.attrs['train_size'])
-    training_no_samples = int(f.attrs['train_size'] * TRAINING_RATIO )
-    print("Training file:" + train_dir)
-    print("Total number of training samples: "+str(total_training_size) )
-    print("Training number of samples used(and training end): "+str(training_no_samples))
-
-    if MODEL_MT:
-        index_arr_train = np.array(f['index_array_train'])
-        target_index_arr_size = int((len(index_arr_train) * TRAINING_RATIO_MT))
-        index_arr_train = index_arr_train[0:target_index_arr_size]
-
-        index_arr_validate = np.array(f['index_array_validate'])
-        print(index_arr_train)
-        print(len(index_arr_train))
-
-        training_no_samples_mt = return_sum_samples(index_arr_train)
-        print("Number of training samples for multiple tower model: "+str(training_no_samples_mt))
-
-        validation_no_samples_mt = return_sum_samples(index_arr_validate)
-        print("Number of validation samples for multiple tower model: " + str(validation_no_samples_mt))
-
-    if USE_VALIDATION:
-        try:
-            validation_no_samples = int(f.attrs['validation_size'])
-            validation_start = int(f.attrs['validation_start'])
-        except Exception:
-            print("Validation set params not found in HDF5 file, computing according to VALIDATION_RATIO...")
-            validation_no_samples = int(VALIDATION_RATIO * total_training_size )
-            validation_start = total_training_size - validation_no_samples -1
-
-        print("Validation start: " + str(validation_start))
-        print("Validation number of samples: " + str(validation_no_samples))
-
-    if (dev_dir and not USE_VALIDATION):
-        f = h5py.File(dev_dir, 'r')
-        print("Development file:" + dev_dir)
-        development_no_samples = f.attrs['dev_size']
-        print("Development number of samples: " + str(development_no_samples))
-
-def generate_images_hdf5_mt(file,image_size,type="training" ):
+def generate_images_hdf5_mt(file,image_size,type,validation_start,index_arr_train,index_arr_validate):
 
     if(type=="training"):
         validation_offset = 0
@@ -242,7 +180,7 @@ def generate_images_hdf5_mt(file,image_size,type="training" ):
 
                     yield (input_list, y_train_batch)
 
-def generate_imges_from_hdf5(file,image_size,type="training"):
+def generate_imges_from_hdf5(file,image_size,type,training_no_samples,validation_no_samples,validation_start,development_no_samples):
 
     index=0
     offset=0
@@ -293,25 +231,13 @@ def generate_imges_from_hdf5(file,image_size,type="training"):
 
         print("\ni is: " + str(i) +" ("+type+")")
 
-def return_sum_samples(index_arr):
-
-    sum_samples = 0
-    for i in range(len(index_arr)):
-
-        if (index_arr[i] >= SEQUENCE_LENGTH):
-
-            face_track_length = index_arr[i]
-            no_samples = int(((face_track_length - SEQUENCE_LENGTH) / STEP)) + 1
-            sum_samples = sum_samples + no_samples
-
-    return sum_samples
-
 if __name__ == "__main__":
 
     training_file, development_file, model_path, image_size, BATCH_SIZE, output_path = process_arguments()
 
-    #Set global variables
-    set_no_samples(training_file, development_file)
+    training_no_samples, training_no_samples_mt, validation_no_samples, validation_no_samples_mt, \
+    validation_start, development_no_samples, development_no_samples_mt, index_arr_train, index_arr_validate = utils.set_no_samples(training_file, development_file,MODEL_MT,
+                                                                                                   USE_VALIDATION,TRAINING_RATIO,VALIDATION_RATIO,SEQUENCE_LENGTH,STEP,FACETRACK_RATIO)
 
     if MODEL_MT:
         model = mt.get_model(towers_no=SEQUENCE_LENGTH)
@@ -327,17 +253,19 @@ if __name__ == "__main__":
             utils.calculate_steps_per_epoch(training_no_samples_mt,validation_no_samples_mt,development_no_samples_mt,batch_size=BATCH_SIZE,
                                       image_generator=IMAGE_GENERATOR,image_generator_factor=IMAGE_GENERATOR_FACTOR);
 
-        training_generator = generate_images_hdf5_mt(file=training_file, type="training", image_size= image_size)
-        validation_generator =  generate_images_hdf5_mt(file=training_file, type="validation", image_size=image_size)
-        development_generator = generate_images_hdf5_mt(file=training_file, type="development", image_size=image_size)
+        training_generator = generate_images_hdf5_mt(training_file, image_size, "training",validation_start, index_arr_train,index_arr_validate)
+        validation_generator =  generate_images_hdf5_mt(training_file, image_size, "validation",validation_start, index_arr_train,index_arr_validate)
+        development_generator = generate_images_hdf5_mt(training_file, image_size, "development",validation_start, index_arr_train,index_arr_validate)
     else:
         steps_per_epoch_train, validation_steps, development_steps = \
             utils.calculate_steps_per_epoch(training_no_samples, validation_no_samples, development_no_samples,batch_size=BATCH_SIZE,
                                       image_generator=IMAGE_GENERATOR, image_generator_factor=IMAGE_GENERATOR_FACTOR);
         #Each time, the generator returns a batch of 32 samples, each epoch represents approximately the whole training set
-        training_generator = generate_imges_from_hdf5(file=training_file, type="training", image_size= image_size)
-        validation_generator = generate_imges_from_hdf5(file=training_file, type="validation",image_size=image_size)
-        development_generator = generate_imges_from_hdf5(file=development_file,type="development",image_size=image_size)
+        training_generator = generate_imges_from_hdf5(training_file, image_size, "training",training_no_samples, validation_no_samples, validation_start, development_no_samples)
+        validation_generator = generate_imges_from_hdf5(training_file, image_size,"validation",training_no_samples, validation_no_samples, validation_start, development_no_samples)
+        development_generator = generate_imges_from_hdf5(development_file, image_size,"development",training_no_samples, validation_no_samples, validation_start, development_no_samples)
+
+
 
     if(USE_VALIDATION):
         dev_val_generator = validation_generator

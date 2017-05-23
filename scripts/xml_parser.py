@@ -66,8 +66,6 @@ DEBUG=False
 DEBUG_DETAIL=False
 
 GENERATE_IMAGES=False
-GENERATE_FACETRACK_FILE=False
-
 ###################################################################################
 # Function to create bounding box from polygon points
 # Can be used for either XGTF polygon points or facial landmarks points
@@ -108,7 +106,7 @@ def readInputFiles(arguments):
 
     #Assert argument
 
-    assert len(arguments) == 7, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path> <Face landmark file path> <output folder path>"
+    assert len(arguments) == 8, "Error with number of argument : python xml_parser.py <TRS file path> <XGTF file path> <Face track file path> <video file path> <Face landmark file path> <output folder path> <facetrack_talkingface folder path>"
 
     try:
         #Read TRS file
@@ -159,8 +157,10 @@ def readInputFiles(arguments):
         os.makedirs(arguments[6])
     output_dir=arguments[6]
 
+    facetrack_talkingface_dir = arguments[7]
 
-    return trs_file, xgtf_file, face_track_file, video, video_id, face_landmarks_file,output_dir
+
+    return trs_file, xgtf_file, face_track_file, video, video_id, face_landmarks_file,output_dir, facetrack_talkingface_dir
 
 ###################################################################################
 # Extract number of frames, frame rate, horizontal frame size, vertical frame size.
@@ -521,7 +521,7 @@ def get_landmarks_bounding_box(face_landmarks_file,h_frame_size,v_frame_size):
 #################################################################################
 #Generate training set as Xv.npy and Y.npy
 #################################################################################
-def generate_training_set(face_speech_list,face_track_file,face_landmarks_dataframe,output_dir):
+def generate_training_set(face_speech_list,face_track_file,face_landmarks_dataframe,output_dir,facetrack_talkingface_dir):
     #For each entry in our list:
 
     for face_speech_item in face_speech_list:
@@ -603,19 +603,19 @@ def generate_training_set(face_speech_list,face_track_file,face_landmarks_datafr
                 print(Y.shape)
                 print(Y)
 
-    if(GENERATE_FACETRACK_FILE):
-        face_track_file['time'] = face_track_file['time'].map('{:.3f}'.format)
-        face_track_file['id'] = face_track_file['id'].map('{:d}'.format)
-        face_track_file['left'] = (face_track_file['left'] / h_frame_size).map('{:.3f}'.format)
-        face_track_file['right'] = (face_track_file['right'] / h_frame_size).map('{:.3f}'.format)
-        face_track_file['top'] = (face_track_file['top'] / v_frame_size).map('{:.3f}'.format)
-        face_track_file['bottom'] = (face_track_file['bottom'] / v_frame_size).map('{:.3f}'.format)
-        face_track_file.to_csv(output_dir, sep=" ", header=False,index_label = False, index=False)
+    #Generate facetrack-talking face
+    face_track_file['time'] = face_track_file['time'].map('{:.3f}'.format)
+    face_track_file['id'] = face_track_file['id'].map('{:d}'.format)
+    face_track_file['left'] = (face_track_file['left'] / h_frame_size).map('{:.3f}'.format)
+    face_track_file['right'] = (face_track_file['right'] / h_frame_size).map('{:.3f}'.format)
+    face_track_file['top'] = (face_track_file['top'] / v_frame_size).map('{:.3f}'.format)
+    face_track_file['bottom'] = (face_track_file['bottom'] / v_frame_size).map('{:.3f}'.format)
+    face_track_file.to_csv(facetrack_talkingface_dir,sep=" ", header=False,index_label = False, index=False)
 
 if __name__ == "__main__":
 
     # Read input files
-    trs_file, xgtf_file, face_track_file, video, video_id, face_landmarks_file, output_dir = readInputFiles(sys.argv)
+    trs_file, xgtf_file, face_track_file, video, video_id, face_landmarks_file, output_dir, facetrack_talkingface_dir = readInputFiles(sys.argv)
 
     #Extract frame rate, horizontal frame size, vertical frame size.
     frame_rate, h_frame_size, v_frame_size = extract_frame_info(xgtf_file)
@@ -635,7 +635,7 @@ if __name__ == "__main__":
     #Get landmarks bounding box to combine with face track bounding box
     face_landmarks_dataframe = get_landmarks_bounding_box(face_landmarks_file, h_frame_size, v_frame_size)
 
-    generate_training_set(face_speech_list, face_track_file, face_landmarks_dataframe, output_dir)
+    generate_training_set(face_speech_list, face_track_file, face_landmarks_dataframe, output_dir,facetrack_talkingface_dir)
 
     print("##################### Face-speech list ######################################")
     print_list_items(face_speech_list)

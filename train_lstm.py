@@ -55,7 +55,7 @@ def lstm_generator(file,type,validation_start, index_arr_train,index_arr_validat
 
         facetrack_index = 0
         # Only facetracks of length bigger than SEQUENCE_LENGTH will be used
-        while (index_arr[facetrack_index] >=SEQUENCE_LENGTH) and (facetrack_index < len(index_arr)):
+        while (index_arr[facetrack_index] >=SEQUENCE_LENGTH) and (facetrack_index < len(index_arr) - 1):
 
             start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
             end = np.sum(index_arr[0:facetrack_index + 1])

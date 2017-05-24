@@ -25,13 +25,18 @@ def get_file_names(dir):
 
     return names_list
 
-def get_numpy_files(dir, names_list):
+def get_numpy_files(dir, names_list,data_type):
 
     Xv_array=list()
     Y_array=list()
 
+    if data_type == "landmarks":
+        regex = "*.XLandmarks.npy"
+    elif data_type == "images":
+        regex = "*.Xv.npy"
+
     for item in names_list:
-        Xv_array.append(glob(dir + "/" + item + "*.XLandmarks.npy"))
+        Xv_array.append(glob(dir + "/" + item + regex))
         Y_array.append(glob(dir + "/" + item + "*.Y.npy"))
 
     #remove empty entries
@@ -53,7 +58,7 @@ def get_numpy_files(dir, names_list):
 
     return flattened_Xv_array, flattened_Y_array
 
-def save_to_hdf5(dir,output_file,type="training"):
+def save_to_hdf5(dir,output_file,type="training",data_type="landmarks"):
 
     # validate shape along saving file to save time
     validate = True
@@ -71,8 +76,8 @@ def save_to_hdf5(dir,output_file,type="training"):
         random.shuffle(training_only_list)
 
         #get numpy arrays for training and validation
-        train_x_fnames, train_y_fnames = get_numpy_files(dir, training_only_list)
-        validation_x_fnames, validation_y_fnames = get_numpy_files(dir, validation_list)
+        train_x_fnames, train_y_fnames = get_numpy_files(dir, training_only_list,data_type)
+        validation_x_fnames, validation_y_fnames = get_numpy_files(dir, validation_list,data_type)
 
         # concatenate training and validation output
         y_train_arrays = [np.load(f) for f in train_y_fnames]
@@ -106,9 +111,14 @@ def save_to_hdf5(dir,output_file,type="training"):
         print(index_arr)
 
     #If type is development or test, handle normally
-    elif (type == "development" or type == "test" or type == "training_old"):
+    elif (type == "development" or type == "test"):
+
+        if data_type == "landmarks":
+            regex = "/*.XLandmarks.npy"
+        elif data_type == "images":
+            regex = "/*.Xv.npy"
         # Get x
-        x_fnames = glob(dir + "/*.Xv.npy")
+        x_fnames = glob(dir + regex)
         x_fnames.sort()
         # Get y
         y_fnames = glob(dir + "/*.Y.npy")
@@ -118,15 +128,15 @@ def save_to_hdf5(dir,output_file,type="training"):
         x_dataset = np.concatenate(x_arrays)
 
         y_arrays = [np.load(f) for f in y_fnames]
+        index_arr = [len(array) for array in y_arrays]
         y_dataset = np.concatenate(y_arrays)
 
         if SHUFFLE_SAMPLES:
             # shuffle training video samples inplace but keep validation set intact.
-            size_to_shuffle = int(x_dataset.shape[0] * 0.8)
-            index_to_shuffle = np.arange(size_to_shuffle)
+            index_to_shuffle = x_dataset.shape[0]
             np.random.shuffle(index_to_shuffle)
-            x_dataset[0:size_to_shuffle] = x_dataset[index_to_shuffle]
-            y_dataset[0:size_to_shuffle] = y_dataset[index_to_shuffle]
+            x_dataset = x_dataset[index_to_shuffle]
+            y_dataset = y_dataset[index_to_shuffle]
             print("Shape should still be: "+str(x_dataset.shape[0]))
 
     #validate x_dataset shape
@@ -194,6 +204,9 @@ def save_to_hdf5(dir,output_file,type="training"):
         # Creating dataset to store labels
         f.create_dataset('development_labels', data=y_dataset)
 
+        f.create_dataset('index_array', data=index_arr)
+
+
     elif (type == "test"):
 
         f.attrs['test_size'] = x_dataset.shape[0]
@@ -210,16 +223,18 @@ def save_to_hdf5(dir,output_file,type="training"):
 
 def process_arguments():
 
-    assert len(sys.argv) == 4, "Error with number of arguments: <type> <directory> <outputfile name>"
-    assert (sys.argv[1]=="training" or sys.argv[1]=="development" or sys.argv[1]=="test" or sys.argv[1]=="training_old" )
-    assert (os.path.isdir(sys.argv[2])),"Error, directory doesn't exist"
-    assert (not os.path.isfile(sys.argv[3])), "Error: file already exists, can't overwrite it"
+    assert len(sys.argv) == 5, "Error with number of arguments: <type> <iamges/landmarks> <directory> <outputfile name>"
+    assert (sys.argv[1]=="training" or sys.argv[1]=="development" or sys.argv[1]=="test" )
+    assert (sys.argv[2]=="images" or sys.argv[2]=="landmarks" )
+    assert (os.path.isdir(sys.argv[3])),"Error, directory doesn't exist"
+    assert (not os.path.isfile(sys.argv[4])), "Error: file already exists, can't overwrite it"
 
     type = sys.argv[1]
-    path = sys.argv[2]
-    outputfile = sys.argv[3]
+    data_type = sys.argv[2]
+    path = sys.argv[3]
+    outputfile = sys.argv[4]
 
-    return type, path, outputfile
+    return type,data_type, path, outputfile
 
 def plot_histogram(dir,type="training"):
 
@@ -270,11 +285,11 @@ def plot_histogram(dir,type="training"):
 
 if __name__ == "__main__":
 
-    type, path, outputfile = process_arguments()
+    type,data_type, path, outputfile = process_arguments()
 
     if PRINT_HISTOGRAM:
         plot_histogram(path, type=type)
 
-    validate = save_to_hdf5(path, outputfile, type=type)
+    validate = save_to_hdf5(path, outputfile, type=type,data_type=data_type)
     if(not validate):
         print("Error in dataset shape...")

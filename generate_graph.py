@@ -20,8 +20,8 @@ if __name__ == "__main__":
 
     model_path =  process_arguments()
 
-    dev_percentage = utils.compute_majority_class("/vol/work1/dyab/development_set/develop_dataset_local.h5", type="development")
-    test_percentage = utils.compute_majority_class("/vol/work1/dyab/test_set/test_dataset.h5", type="test")
+    dev_percentage = utils.compute_samples_majority_class("/vol/work1/dyab/development_set/develop_dataset_local.h5", type="development")
+    test_percentage = utils.compute_samples_majority_class("/vol/work1/dyab/test_set/test_dataset.h5", type="test")
 
     evaluation_logger = np.loadtxt(model_path+"/development_log.csv",delimiter=",",skiprows=1)
     epochs = evaluation_logger[:,0]

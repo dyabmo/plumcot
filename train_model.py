@@ -27,7 +27,6 @@ VALIDATION_RATIO = 0.1
 MODEL_PRETRAINED=False
 MODEL_VGG16=False
 MODEL_MT=False
-FACETRACK_RATIO = 0.2
 SEQUENCE_LENGTH=25
 STEP=5
 #To be able to visualize correctly
@@ -236,8 +235,8 @@ if __name__ == "__main__":
     training_file, development_file, model_path, image_size, BATCH_SIZE, output_path = process_arguments()
 
     training_no_samples, training_no_samples_mt, validation_no_samples, validation_no_samples_mt, \
-    validation_start, development_no_samples, development_no_samples_mt, index_arr_train, index_arr_validate = utils.set_no_samples(training_file, development_file,MODEL_MT,
-                                                                                                   USE_VALIDATION,TRAINING_RATIO,VALIDATION_RATIO,SEQUENCE_LENGTH,STEP,FACETRACK_RATIO)
+    validation_start, development_no_samples, development_no_samples_mt, index_arr_train, index_arr_validate,index_array_dev = utils.set_no_samples(training_file, development_file,MODEL_MT,
+                                                                                                   USE_VALIDATION,TRAINING_RATIO,VALIDATION_RATIO,SEQUENCE_LENGTH,STEP)
 
     if MODEL_MT:
         model = mt.get_model(towers_no=SEQUENCE_LENGTH)
@@ -270,15 +269,15 @@ if __name__ == "__main__":
     if(USE_VALIDATION):
         dev_val_generator = validation_generator
         dev_val_steps = validation_steps
-        percentage = utils.compute_majority_class(training_file, type="validation", start=validation_start,
-                                            end=validation_start + validation_no_samples)
+        percentage = utils.compute_samples_majority_class(training_file, type="validation", start=validation_start,
+                                                          end=validation_start + validation_no_samples)
         print("Validation set +ve label percentage: "+str(percentage))
 
     else:
         dev_val_generator = development_generator
         dev_val_steps = development_steps
-        percentage = utils.compute_majority_class(development_file, type="development", start=0,
-                                        end=development_no_samples)
+        percentage = utils.compute_samples_majority_class(development_file, type="development", start=0,
+                                                          end=development_no_samples)
         print("Development set +ve label percentage: " + str(percentage))
 
     callbacks_list = utils.get_callabcks_list(output_path=output_path,percentage=percentage)

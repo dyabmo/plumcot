@@ -17,7 +17,7 @@ IMAGE_SIZE_112 = 112
 IMAGE_SIZE_56 = 56
 INPUT_CHANNEL=3
 
-def log_description(model,path,training_ratio,validation_ratio,model_path,dataset_path,validation_used,batch_size=32,data_augmentation=False):
+def log_description(model,path,training_ratio,validation_ratio,model_path,dataset_path,validation_used,batch_size=32,data_augmentation=False,optimizer=None):
 
     description = open(path+"/description" ,'w')
     description.write("Training set used: "+str(dataset_path)+"\n")
@@ -31,6 +31,7 @@ def log_description(model,path,training_ratio,validation_ratio,model_path,datase
     if(data_augmentation):
         description.write("Data Augmentation is used\n")
 
+    description.write("Optimizer: {}".format(optimizer))
     description.write("===============================================\n")
     description.write("Model used: "+str(model_path)+"\n")
     description.write("Model Summary:\n")
@@ -70,13 +71,14 @@ class TimeLogger(Callback):
 class AccLossPlotter(Callback):
     #Plot training Accuracy and Loss values on a Matplotlib graph.
 
-    def __init__(self, graphs=['acc', 'loss'], save_graph=True,path='/vol/work1/dyab/training_models',name='graph_Epoch',percentage=0):
+    def __init__(self, graphs=['acc', 'loss'], save_graph=True,path='/vol/work1/dyab/training_models',name='graph_Epoch',percentage=0,training_percentage=0):
         self.graphs = graphs
         self.num_subplots = len(graphs)
         self.save_graph = save_graph
         self.name = name
         self.path = path
         self.percentage = percentage
+        self.training_percentage = training_percentage
 
     def on_train_begin(self, logs={}):
         self.acc = []
@@ -105,8 +107,8 @@ class AccLossPlotter(Callback):
             plt.plot(epochs, self.acc, color='b')
             plt.ylabel('accuracy')
 
-            red_patch = mpatches.Patch(color='red', label='Val. +ve label '+str('{:.2f}'.format(self.percentage)) +'%' )
-            blue_patch = mpatches.Patch(color='blue', label='Train')
+            red_patch = mpatches.Patch(color='red', label='Val. +ve label {:.2f}%'.format(self.percentage) )
+            blue_patch = mpatches.Patch(color='blue', label='Train +ve label {:.2f}%'.format(self.training_percentage) )
 
             plt.legend(handles=[red_patch, blue_patch], loc=4)
 
@@ -118,8 +120,9 @@ class AccLossPlotter(Callback):
             plt.plot(epochs, self.loss, color='b')
             plt.ylabel('loss')
 
-            red_patch = mpatches.Patch(color='red', label='Val. +ve label '+str('{:.2f}'.format(self.percentage))+'%' )
-            blue_patch = mpatches.Patch(color='blue', label='Train')
+            red_patch = mpatches.Patch(color='red', label='Val. +ve label {:.2f}%'.format(self.percentage))
+            blue_patch = mpatches.Patch(color='blue',
+                                        label='Train +ve label {:.2f}%'.format(self.training_percentage))
 
             plt.legend(handles=[red_patch, blue_patch], loc=4)
 
@@ -130,7 +133,7 @@ class AccLossPlotter(Callback):
         if self.save_graph:
             plt.savefig(self.path+'/'+self.name+'.png')
 
-def compute_majority_class(dir,type='validation',start=0,end=None):
+def compute_samples_majority_class(dir, type='validation', start=0, end=None):
 
     _, y=load_from_hdf5(dir, type, start=start, end=end, labels_only=True)
 
@@ -274,9 +277,9 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     length = len(x)
     length = length - (length % step)
 
-    no_samples = int( ((length - sequence_length)/step) ) + 1
     #Trim list to be equal to calculated length
     x = x[0:length]
+    y = y[0:length]
 
     #create list of indices that they numpy array will be split on
     new_indices = np.arange(0, length, sequence_length)
@@ -390,7 +393,7 @@ def return_sequence_size(index_arr, sequence_length, step):
     return sum_samples
 
 #TODO: Divide it into two versions, according to: either sue individual samples or sequences of samples.. use facetrack ratio instead of training ratio
-def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio,validation_ratio,sequence_length,step,facetrack_ratio):
+def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio,validation_ratio,sequence_length,step):
 
     #Set number of samples to calculate: steps_per_epoch automatically
     training_no_samples = 0
@@ -402,54 +405,82 @@ def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio
     development_sequence_no_samples = 0
     index_arr_train = np.zeros((0))
     index_arr_validate = np.zeros((0))
+    index_array_dev = np.zeros((0))
 
     f = h5py.File(train_dir, 'r')
-
-    total_training_size = int(f.attrs['train_size'])
-    training_no_samples = int(f.attrs['train_size'] * training_ratio )
     print("Training file:" + train_dir)
-    print("Total number of training samples: "+str(total_training_size) )
-    print("Training number of samples used(and training end): "+str(training_no_samples))
 
-    if use_seq_model:
+    if not use_seq_model:
+        total_training_size = int(f.attrs['train_size'])
+        print("Total number of training samples: "+str(total_training_size) )
+
+        training_no_samples = int(f.attrs['train_size'] * training_ratio )
+        print("Training number of samples used(and training end): "+str(training_no_samples))
+
+        if use_validation:
+            try:
+                validation_no_samples = int(f.attrs['validation_size'])
+                validation_start = int(f.attrs['validation_start'])
+            except Exception:
+                print("Validation set params not found in HDF5 file, computing according to VALIDATION_RATIO...")
+                validation_no_samples = int(validation_ratio * total_training_size)
+                validation_start = total_training_size - validation_no_samples - 1
+                print("Validation start: " + str(validation_start))
+                print("Validation number of samples: " + str(validation_no_samples))
+
+        elif not use_validation:
+            f = h5py.File(dev_dir, 'r')
+            print("Development file:" + dev_dir)
+            development_no_samples = f.attrs['dev_size']
+            print("Development number of samples: " + str(development_no_samples))
+
+    elif use_seq_model:
         index_arr_train = np.array(f['index_array_train'])
-        target_index_arr_size = int((len(index_arr_train) * facetrack_ratio))
-        index_arr_train = index_arr_train[0:target_index_arr_size]
+        total_training_size = np.sum(index_arr_train)
+        print("Total number of training samples: "+str(total_training_size) )
 
-        index_arr_validate = np.array(f['index_array_validate'])
-        print(index_arr_train)
-        print(len(index_arr_train))
+        target_index_arr_size = int((len(index_arr_train) * training_ratio))
+        index_arr_train = index_arr_train[0:target_index_arr_size]
+        training_no_samples = np.sum(index_arr_train)
+        print("Training number of samples used(and training end): " + str(training_no_samples))
 
         training_sequence_no_samples = return_sequence_size(index_arr_train, sequence_length=sequence_length, step=step)
         print("Number of training samples for sequence based samples: " + str(training_sequence_no_samples))
 
-        validation_sequence_no_samples = return_sequence_size(index_arr_validate, sequence_length=sequence_length, step=step)
-        print("Number of validation samples for sequence based samples: " + str(validation_sequence_no_samples))
+        if(use_validation):
+            index_arr_validate = np.array(f['index_array_validate'])
+            total_validation_size = np.sum(index_arr_validate)
+            print("Total number of validation samples: "+str(total_validation_size) )
 
-    if use_validation:
-        try:
-            validation_no_samples = int(f.attrs['validation_size'])
+            validation_index_arr_size = int((len(index_arr_validate) * validation_ratio))
+            index_arr_validate = index_arr_validate[0:validation_index_arr_size]
+            validation_no_samples = np.sum(index_arr_validate)
+            print("Validation number of samples used: " + str(validation_no_samples))
+
+            validation_sequence_no_samples = return_sequence_size(index_arr_validate, sequence_length=sequence_length, step=step)
+            print("Number of validation samples for sequence based samples: " + str(validation_sequence_no_samples))
+
             validation_start = int(f.attrs['validation_start'])
-        except Exception:
-            print("Validation set params not found in HDF5 file, computing according to VALIDATION_RATIO...")
-            validation_no_samples = int(validation_ratio * total_training_size )
-            validation_start = total_training_size - validation_no_samples -1
+            print("Validation start: " + str(validation_start))
 
-        print("Validation start: " + str(validation_start))
-        print("Validation number of samples: " + str(validation_no_samples))
+        elif not use_validation:
+            f = h5py.File(dev_dir, 'r')
+            print("Development file:" + dev_dir)
+            development_no_samples = f.attrs['dev_size']
+            print("Total number of development samples: "+str(development_no_samples) )
+            print("Development number of samples: " + str(development_no_samples))
+            index_array_dev = np.array(f['index_array'])
 
-    if (dev_dir and not use_validation):
-        f = h5py.File(dev_dir, 'r')
-        print("Development file:" + dev_dir)
-        development_no_samples = f.attrs['dev_size']
-        print("Development number of samples: " + str(development_no_samples))
+            development_sequence_no_samples = return_sequence_size(index_array_dev, sequence_length=sequence_length, step=step)
+            print("Number of Developmet samples for sequence based samples: " + str(development_sequence_no_samples))
+
 
     return training_no_samples, training_sequence_no_samples, validation_no_samples, validation_sequence_no_samples, \
-           validation_start, development_no_samples, development_sequence_no_samples, index_arr_train, index_arr_validate
+           validation_start, development_no_samples, development_sequence_no_samples, index_arr_train, index_arr_validate, index_array_dev
 
 def calculate_steps_per_epoch(training_samples,validation_samples,development_samples,batch_size=32, image_generator=False,image_generator_factor=1):
 
-    steps_per_epoch_train = int(training_samples / batch_size)
+    steps_per_epoch_train = int(training_samples / batch_size )
     validation_steps = int(validation_samples / batch_size)
     development_steps = int(development_samples / batch_size)
 
@@ -458,9 +489,9 @@ def calculate_steps_per_epoch(training_samples,validation_samples,development_sa
 
     return steps_per_epoch_train,validation_steps, development_steps
 
-def get_callabcks_list(output_path,percentage):
+def get_callabcks_list(output_path,percentage,training_percentage):
     # list of callbacks:
-    plotter = AccLossPlotter(graphs=['acc', 'loss'], path=output_path, percentage=percentage)
+    plotter = AccLossPlotter(graphs=['acc', 'loss'], path=output_path, percentage=percentage,training_percentage=training_percentage)
     csv_logger = CSVLogger(output_path + "csv_logger.csv")
     time_logger = TimeLogger(output_path + "time_logger.csv")
     checkpoint = ModelCheckpoint(output_path + "Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1)

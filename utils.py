@@ -297,14 +297,16 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
 
     #remove arrays of length that is less than sequence length, those are the boundaries of splitting
     new_seq_x = list(filter(lambda x: len(x) >= sequence_length, new_seq_x))
-    new_seq_y = list(filter(lambda x: len(x) >= sequence_length, new_seq_y))
+    new_seq_y = list(filter(lambda y: len(y) >= sequence_length, new_seq_y))
 
-    #Actually reshape each sequence
-    new_seq_x = [x.reshape(new_shape_x) for x in new_seq_x]
-    new_seq_y = [x.reshape(new_shape_y) for x in new_seq_y]
+    #Only reshape and concatenate arrays if they are more than one ...
+    if(len(new_seq_x) > 1 and len(new_seq_y) > 1):
+        #Actually reshape each sequence
+        new_seq_x = [x.reshape(new_shape_x) for x in new_seq_x]
+        new_seq_y = [y.reshape(new_shape_y) for y in new_seq_y]
 
-    new_seq_x = np.concatenate(new_seq_x)
-    new_seq_y = np.vstack(new_seq_y)
+        new_seq_x = np.concatenate(new_seq_x)
+        new_seq_y = np.vstack(new_seq_y)
 
     #If one output label is needed for the sequence, instead of a sequence of outputs
     if(not seq2seq):

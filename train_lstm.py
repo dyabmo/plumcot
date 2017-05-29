@@ -8,14 +8,14 @@ import utils
 import numpy as np
 from keras.models import load_model
 
-NB_EPOCH = 100
+NB_EPOCH = 200
 BATCH_SIZE=32
 INPUT_DIMS=40
 SEQUENCE_LENGTH=25
 STEP = 2
-USE_VALIDATION = False
+USE_VALIDATION = True
 TRAINING_RATIO = 0.8
-VALIDATION_RATIO = 0.5
+VALIDATION_RATIO = 1
 
 #TODO: Count number of sequential samples
 
@@ -60,29 +60,37 @@ def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_val
 
         facetrack_index = 0
         # Only facetracks of length bigger than SEQUENCE_LENGTH will be used
-        while (index_arr[facetrack_index] >=SEQUENCE_LENGTH) and (facetrack_index < len(index_arr) - 1):
+        while (facetrack_index < len(index_arr) - 1):
 
-            start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
-            end = np.sum(index_arr[0:facetrack_index + 1])
+            if (index_arr[facetrack_index] >= SEQUENCE_LENGTH):
 
-            if (type == "validation"):
-                start = start + validation_offset
-                end = end + validation_offset
+                start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
+                end = np.sum(index_arr[0:facetrack_index + 1])
+                #print("Facetrack_index: {}".format(facetrack_index))
+                #print("Before Start {}, End {}".format(start, end))
 
-            # load the concened facetrack
-            x, y = utils.load_from_hdf5(file, type=type,start=start, end=end)
+                if (type == "validation"):
+                    start = start + validation_offset
+                    end = end + validation_offset
+                    #print("After Start {}, End {}".format(start, end))
 
-            # preprocess the facetrack
-            x_processed, y_processed = utils.preprocess_lstm(x, y)
+                # load the concened facetrack
+                x, y = utils.load_from_hdf5(file, type=type,start=start, end=end)
+                #print("Size of facetrack: {}".format( len(x)))
 
-            #Group facetrack samples as sequences
-            x_train , y_train = utils.sequence_samples(x_processed, y_processed,sequence_length=SEQUENCE_LENGTH, step=STEP,seq2seq=True)
+                # preprocess the facetrack
+                x_processed, y_processed = utils.preprocess_lstm(x, y)
 
-            #Yield one sequence only each time
-            for item_x,item_y in zip(x_train,y_train):
-                yield item_x,item_y
+                #Group facetrack samples as sequences
+                x_train , y_train = utils.sequence_samples(x_processed, y_processed,sequence_length=SEQUENCE_LENGTH, step=STEP,seq2seq=True)
 
-            #After yield is finished, go to next facetrack
+                #Yield one sequence only each time
+                for item_x,item_y in zip(x_train,y_train):
+                    #print(item_x.shape)
+                    #print(item_y.shape)
+                    yield item_x,item_y
+
+            #Go to next facetrack
             facetrack_index = facetrack_index + 1
 
 if __name__ == "__main__":
@@ -92,7 +100,7 @@ if __name__ == "__main__":
     training_no_samples, training_sequence_no_samples, validation_no_samples, validation_sequence_no_samples, \
     validation_start, development_no_samples, development_sequence_no_samples, index_arr_train, index_arr_validate,index_array_dev  = utils.set_no_samples(training_file,development_file,True,USE_VALIDATION,TRAINING_RATIO,VALIDATION_RATIO,SEQUENCE_LENGTH,STEP)
 
-# create batch generator
+    # create batch generator
     signature = ({'type': 'ndarray'}, {'type': 'ndarray'})
 
     training_generator = lstm_generator(training_file,"training",validation_start,index_arr_train,index_arr_validate)
@@ -125,7 +133,8 @@ if __name__ == "__main__":
         percentage = utils.compute_samples_majority_class(development_file, type="development", start=0, end=development_no_samples)
         print("Development set +ve label percentage: " + str(percentage))
 
-    model_callable = stacked_lstm.StackedLSTM(lstm=[128,128],mlp=[128])
+    #model_callable = stacked_lstm.StackedLSTM(lstm=[128,128],mlp=[128])
+    model_callable = stacked_lstm.StackedLSTM()
     model = model_callable(input_shape = (SEQUENCE_LENGTH, INPUT_DIMS) )
 
 
@@ -150,7 +159,7 @@ if __name__ == "__main__":
                           model_path="Stacked LSTM", dataset_path=training_file, validation_used=USE_VALIDATION,
                           batch_size=BATCH_SIZE,optimizer=optimizer_name)
 
-    model.fit_generator(batch_training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train//80, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)
+    model.fit_generator(batch_training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)
 
     #model.load_weights("/vol/work1/dyab/training_models/lstm_ssmorm3_layers_2_128_step_2_tiny_epoch/Epoch.93_Training_Acc.1.00.hdf5")
     #score_dev = model.evaluate_generator(batch_development_generator, development_steps)

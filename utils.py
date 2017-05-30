@@ -88,7 +88,6 @@ class AccLossPlotter(Callback):
         self.epoch_count = 0
         plt.ioff()
 
-
     def on_epoch_end(self, epoch, logs={}):
         self.epoch_count += 1
         self.val_acc.append(logs.get('val_acc'))
@@ -106,6 +105,7 @@ class AccLossPlotter(Callback):
             plt.plot(epochs, self.val_acc, color='r')
             plt.plot(epochs, self.acc, color='b')
             plt.ylabel('accuracy')
+            plt.plot(epochs, [self.percentage]* self.epoch_count ,color = 'g'  )
 
             red_patch = mpatches.Patch(color='red', label='Val. +ve label {:.2f}%'.format(self.percentage) )
             blue_patch = mpatches.Patch(color='blue', label='Train +ve label {:.2f}%'.format(self.training_percentage) )
@@ -120,9 +120,8 @@ class AccLossPlotter(Callback):
             plt.plot(epochs, self.loss, color='b')
             plt.ylabel('loss')
 
-            red_patch = mpatches.Patch(color='red', label='Val. +ve label {:.2f}%'.format(self.percentage))
-            blue_patch = mpatches.Patch(color='blue',
-                                        label='Train +ve label {:.2f}%'.format(self.training_percentage))
+            red_patch = mpatches.Patch(color='red', label='Validation')
+            blue_patch = mpatches.Patch(color='blue', label='Training')
 
             plt.legend(handles=[red_patch, blue_patch], loc=4)
 
@@ -316,19 +315,66 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
 
     return new_seq_x,new_seq_y
 
-def preprocess_lstm(x,y,normalize=False):
+def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative=False):
 
     # Convert to numpy array
     x_np = np.array(x)
     y_np = np.array(y)
 
+    #Change y to categorical
+    y_train = to_categorical(y_np, num_classes=2)
+
     #TODO: Do we need to normalize sth ?
     if normalize:
         raise NotImplementedError("Not implemented")
 
-    #Change y to categorical
-    y_train = to_categorical(y_np, num_classes=2)
-    return x_np,y_train
+    #print(x_np.shape)
+    if first_derivative:
+
+        x_np_delta = np.zeros((x_np.shape[0],x_np.shape[1]*2))
+        for i in range(len(x_np)):
+
+            delta_x = np.zeros(x_np.shape[1])
+            # ignore first x, first y and last x, last y
+            for j in range(2,x_np.shape[1]-2):
+
+                #step = 2 because: x,y,x,y,x,y,x,y
+                delta_x[j] = x_np[i][j+2] - x_np[i][j-2]
+
+            x_np_delta[i] = np.concatenate((x_np[i],delta_x))
+
+        #print(x_np_delta.shape)
+        #print(x_np_delta)
+
+        #second derivative is computed as a result of the first
+        if second_derivative:
+
+            x_np_delta2 = np.zeros((x_np.shape[0], x_np.shape[1] * 3))
+            for i in range(len(x_np)):
+                delta2_x = np.zeros(x_np.shape[1])
+
+                # ignore first and second x, first and second y / last and before last x, last and before last y
+                for j in range(4, x_np.shape[1] - 4):
+
+                    #step = 2 because: x,y,x,y,x,y,x,y
+                    #40 because we are computing using 1st derivative input
+                    delta2_x[j] = x_np_delta[i][40 + j + 2] - x_np_delta[i][40 + j - 2]
+
+
+                x_np_delta2[i] = np.concatenate((x_np_delta[i], delta2_x))
+
+            #print(x_np_delta2.shape)
+            #print(x_np_delta2)
+
+            return x_np_delta2,y_train
+
+        #If second derivative is false, return value from 1st derivative
+        else:
+            return x_np_delta, y_train
+
+    #If not 1st derivative, just return the values
+    else:
+        return x_np,y_train
 
 
 def preprocess_cnn(x, y, image_size=DEFAULT_IMAGE_SIZE, normalize=True, greyscale=False, flatten=False):
@@ -437,19 +483,11 @@ def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio
             print("Development number of samples: " + str(development_no_samples))
 
     elif use_seq_model:
-        index_arr_train = np.array(f['index_array_train'])
-        total_training_size = np.sum(index_arr_train)
-        print("Total number of training samples: "+str(total_training_size) )
-
-        target_index_arr_size = int((len(index_arr_train) * training_ratio))
-        index_arr_train = index_arr_train[0:target_index_arr_size]
-        training_no_samples = np.sum(index_arr_train)
-        print("Training number of samples used(and training end): " + str(training_no_samples))
-
-        training_sequence_no_samples = return_sequence_size(index_arr_train, sequence_length=sequence_length, step=step)
-        print("Number of training samples for sequence based samples: " + str(training_sequence_no_samples))
 
         if(use_validation):
+            #set the training set without validation part
+            index_arr_train = np.array(f['index_array_train'])
+
             index_arr_validate = np.array(f['index_array_validate'])
             total_validation_size = np.sum(index_arr_validate)
             print("Total number of validation samples: "+str(total_validation_size) )
@@ -466,6 +504,10 @@ def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio
             print("Validation start: " + str(validation_start))
 
         elif not use_validation:
+
+            #use the whole training set including validation part, since dev set is going to be used
+            index_arr_train = np.array(f['index_array'])
+
             f = h5py.File(dev_dir, 'r')
             print("Development file:" + dev_dir)
             development_no_samples = f.attrs['dev_size']
@@ -476,6 +518,17 @@ def set_no_samples(train_dir,dev_dir,use_seq_model,use_validation,training_ratio
             development_sequence_no_samples = return_sequence_size(index_array_dev, sequence_length=sequence_length, step=step)
             print("Number of Developmet samples for sequence based samples: " + str(development_sequence_no_samples))
 
+        #set variables related to training set
+        total_training_size = np.sum(index_arr_train)
+        print("Total number of training samples: "+str(total_training_size) )
+
+        target_index_arr_size = int((len(index_arr_train) * training_ratio))
+        index_arr_train = index_arr_train[0:target_index_arr_size]
+        training_no_samples = np.sum(index_arr_train)
+        print("Training number of samples used(and training end): " + str(training_no_samples))
+
+        training_sequence_no_samples = return_sequence_size(index_arr_train, sequence_length=sequence_length, step=step)
+        print("Number of training samples for sequence based samples: " + str(training_sequence_no_samples))
 
     return training_no_samples, training_sequence_no_samples, validation_no_samples, validation_sequence_no_samples, \
            validation_start, development_no_samples, development_sequence_no_samples, index_arr_train, index_arr_validate, index_array_dev

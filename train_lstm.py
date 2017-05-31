@@ -10,12 +10,26 @@ from keras.models import load_model
 
 NB_EPOCH = 200
 BATCH_SIZE=32
+FIRST_DERIVATIVE=True
+SECOND_DERIVATIVE=True
 INPUT_DIMS=40
 SEQUENCE_LENGTH=25
 STEP = 2
-USE_VALIDATION = True
 TRAINING_RATIO = 0.8
 VALIDATION_RATIO = 1
+USE_VALIDATION = True
+TEST=False
+
+if FIRST_DERIVATIVE:
+    INPUT_DIMS=INPUT_DIMS + 40
+
+if SECOND_DERIVATIVE:
+    INPUT_DIMS=INPUT_DIMS + 40
+
+if TEST:
+    TRAINING_RATIO = 0.01
+    VALIDATION_RATIO = 0.5
+    NB_EPOCH = 3
 
 #TODO: Count number of sequential samples
 
@@ -79,15 +93,20 @@ def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_val
                 #print("Size of facetrack: {}".format( len(x)))
 
                 # preprocess the facetrack
-                x_processed, y_processed = utils.preprocess_lstm(x, y)
-
+                #print(x.shape)
+                #print(y.shape)
+                x_processed, y_processed = utils.preprocess_lstm(x, y,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
+                #print(x_processed.shape)
+                #print(y_processed.shape)
                 #Group facetrack samples as sequences
                 x_train , y_train = utils.sequence_samples(x_processed, y_processed,sequence_length=SEQUENCE_LENGTH, step=STEP,seq2seq=True)
 
+                #print(x_train.shape)
+                #print(y_train.shape)
+                #exit(0)
                 #Yield one sequence only each time
                 for item_x,item_y in zip(x_train,y_train):
-                    #print(item_x.shape)
-                    #print(item_y.shape)
+
                     yield item_x,item_y
 
             #Go to next facetrack
@@ -134,7 +153,8 @@ if __name__ == "__main__":
         print("Development set +ve label percentage: " + str(percentage))
 
     #model_callable = stacked_lstm.StackedLSTM(lstm=[128,128],mlp=[128])
-    model_callable = stacked_lstm.StackedLSTM()
+    model_callable = stacked_lstm.StackedLSTM(lstm=[16,16])
+    #model_callable = stacked_lstm.StackedLSTM()
     model = model_callable(input_shape = (SEQUENCE_LENGTH, INPUT_DIMS) )
 
 

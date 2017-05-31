@@ -105,7 +105,6 @@ class AccLossPlotter(Callback):
             plt.plot(epochs, self.val_acc, color='r')
             plt.plot(epochs, self.acc, color='b')
             plt.ylabel('accuracy')
-            plt.plot(epochs, [self.percentage]* self.epoch_count ,color = 'g'  )
 
             red_patch = mpatches.Patch(color='red', label='Val. +ve label {:.2f}%'.format(self.percentage) )
             blue_patch = mpatches.Patch(color='blue', label='Train +ve label {:.2f}%'.format(self.training_percentage) )
@@ -274,7 +273,9 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
 
     #To represent samples as sequences, get rid of the modulus of the step
     length = len(x)
-    length = length - (length % step)
+
+    length = length - ( (length % sequence_length) % step)
+    #print(length)
 
     #Trim list to be equal to calculated length
     x = x[0:length]
@@ -283,10 +284,14 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     #create list of indices that they numpy array will be split on
     new_indices = np.arange(0, length, sequence_length)
 
+    #print(new_indices)
     #Incorporate the step size in the sequence indices
     new_indices_list = [(new_indices + z) for z in range(0, sequence_length, step)]
 
+    #print(new_indices_list)
+
     #Actually split the array according to the indices
+    #will return empty lists for exceeding length .. that can be removed later
     new_seq_x = [np.split(x, new_indices) for new_indices in new_indices_list]
     new_seq_y = [np.split(y, new_indices) for new_indices in new_indices_list]
 
@@ -298,14 +303,20 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     new_seq_x = list(filter(lambda x: len(x) >= sequence_length, new_seq_x))
     new_seq_y = list(filter(lambda y: len(y) >= sequence_length, new_seq_y))
 
+    #print(new_seq_y)
+
     #Only reshape and concatenate arrays if they are more than one ...
     if(len(new_seq_x) > 1 and len(new_seq_y) > 1):
         #Actually reshape each sequence
         new_seq_x = [x.reshape(new_shape_x) for x in new_seq_x]
         new_seq_y = [y.reshape(new_shape_y) for y in new_seq_y]
 
-        new_seq_x = np.concatenate(new_seq_x)
+        new_seq_x = np.vstack(new_seq_x)
         new_seq_y = np.vstack(new_seq_y)
+
+    else:
+        new_seq_x = np.array(new_seq_x)
+        new_seq_y = np.array(new_seq_y)
 
     #If one output label is needed for the sequence, instead of a sequence of outputs
     if(not seq2seq):
@@ -313,6 +324,8 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
         #Compute y_mt using the majority of labels in y
         y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
 
+    #print(len(new_seq_x))
+    #print(len(new_seq_y))
     return new_seq_x,new_seq_y
 
 def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative=False):

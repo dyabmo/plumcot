@@ -1,6 +1,7 @@
 import numpy as np
 from glob import glob
 import sys
+import os
 
 LAST_INDEX = -1
 FACETRACK_INDEX=1
@@ -40,15 +41,15 @@ def compute_coordinates(raw_coordinates):
     d = abs(points[RIGHT_EYE_INDEX,0] - points[LEFT_EYE_INDEX,0])
 
     # The average of all mouth points
-    x = np.mean(points[MOUTH_START_INDEX:, X])
-    y = np.mean(points[MOUTH_START_INDEX:, Y])
+    x_mean = np.mean(points[MOUTH_START_INDEX:, X])
+    y_mean = np.mean(points[MOUTH_START_INDEX:, Y])
 
     #Normalize each point using the average point and the distance rom the two eyes
     for point in points[MOUTH_START_INDEX:]:
-        x= (point[X] - x) / d
+        x= (point[X] - x_mean) / d
         coordinates_list.append(x)
 
-        y = (point[Y] - y) / d
+        y = (point[Y] - y_mean) / d
         coordinates_list.append(y)
 
     coordinates  = np.asarray(coordinates_list)

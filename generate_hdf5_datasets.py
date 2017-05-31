@@ -66,7 +66,7 @@ def save_to_hdf5(dir,output_file,type="training",data_type="landmarks"):
     #If type is training, must do a special handling to split to validation set
     if(type=="training"):
         #Set training and validation video names, to be able to add the validation videos in the end
-        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list")
+        validation_list = get_file_names("/vol/work1/dyab/training_set/validation_video_list_last_videos")
         all_list = get_file_names("/vol/work1/dyab/training_set/train_video_list")
 
         #Exclude validation file names from list of all names to get training names

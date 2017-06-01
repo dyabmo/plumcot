@@ -256,6 +256,22 @@ def compute_y_mt(y,sequence_length):
 
     return y_mt
 
+def consume_generator(generator):
+
+    x_val, y_val = list(), list()
+    for x, y in generator:
+        x_val.append(x)
+        y_val.append(y)
+
+    # Flatten the list (because of batches)
+    x_val = [val for sublist in x_val for val in sublist]
+    y_val = [val for sublist in y_val for val in sublist]
+
+    x_np = np.array(x_val)
+    y_np = np.array(y_val)
+
+    return x_np,y_np
+
 def sequence_samples(x, y, sequence_length, step, seq2seq):
 
     # Group samples in form of sequences, change:
@@ -318,11 +334,23 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
         new_seq_x = np.array(new_seq_x)
         new_seq_y = np.array(new_seq_y)
 
+    #"clean the y value of sequence, either all ones or all zeroes according to majority
+    if(seq2seq):
+
+        for i in range(len(new_seq_y)):
+            clean_value = np.zeros((sequence_length,2))
+            majority = np.sum(new_seq_y[i,:, 1])
+            if majority >= int(sequence_length / 2):
+                clean_value[:,1] =1
+            else:
+                clean_value[:, 0] = 1
+            new_seq_y[i] = clean_value
+
     #If one output label is needed for the sequence, instead of a sequence of outputs
     if(not seq2seq):
         raise NotImplementedError("Not implemented")
         #Compute y_mt using the majority of labels in y
-        y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
+        #y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
 
     #print(len(new_seq_x))
     #print(len(new_seq_y))
@@ -389,6 +417,66 @@ def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative
     else:
         return x_np,y_train
 
+#yield only one sequence each time, then use batchify..
+#TODO: Generalize on sequences of images too
+def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_validate,sequence_length=25,step=2,first_derivative=True,second_derivative=True,forever=True):
+
+    if(type=="training"):
+        validation_offset = 0
+        index_arr = index_arr_train_dev
+
+    elif (type == "validation"):
+        validation_offset= validation_start
+        index_arr = index_arr_validate
+
+    elif (type == "development"):
+        index_arr = index_arr_train_dev
+
+    #Generator has to loop forever for keras
+    first_loop = True
+    while forever or first_loop:
+
+        facetrack_index = 0
+        # Only facetracks of length bigger than SEQUENCE_LENGTH will be used
+        while (facetrack_index < len(index_arr) - 1):
+
+            if (index_arr[facetrack_index] >= sequence_length):
+
+                start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
+                end = np.sum(index_arr[0:facetrack_index + 1])
+                #print("Facetrack_index: {}".format(facetrack_index))
+                #print("Before Start {}, End {}".format(start, end))
+
+                if (type == "validation"):
+                    start = start + validation_offset
+                    end = end + validation_offset
+                    #print("After Start {}, End {}".format(start, end))
+
+                # load the concened facetrack
+                x, y = load_from_hdf5(file, type=type,start=start, end=end)
+                #print("Size of facetrack: {}".format( len(x)))
+
+                # preprocess the facetrack
+                #print(x.shape)
+                #print(y.shape)
+                x_processed, y_processed = preprocess_lstm(x, y,first_derivative=first_derivative,second_derivative=second_derivative)
+                #print(x_processed.shape)
+                #print(y_processed.shape)
+                #Group facetrack samples as sequences
+                x_train , y_train = sequence_samples(x_processed, y_processed,sequence_length=sequence_length, step=step,seq2seq=True)
+
+                #print(x_train.shape)
+                #print(y_train.shape)
+                #exit(0)
+                #Yield one sequence only each time
+                for item_x,item_y in zip(x_train,y_train):
+
+                    yield item_x,item_y
+
+            #Go to next facetrack
+            facetrack_index = facetrack_index + 1
+
+        first_loop=False
 
 def preprocess_cnn(x, y, image_size=DEFAULT_IMAGE_SIZE, normalize=True, greyscale=False, flatten=False):
     # Convert to numpy array

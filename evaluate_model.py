@@ -1,8 +1,6 @@
 from keras.models import load_model
 import numpy as np
-from keras.utils.np_utils import to_categorical
 import sys
-import scipy.misc
 import os
 from glob import glob
 import utils
@@ -46,7 +44,6 @@ if __name__ == "__main__":
     print("+VE label percentage: {:.2f}".format(positive_label_percentage_dev))
 
     x_val, y_val = utils.preprocess_cnn(x, y, image_size = image_size, normalize=NORMALIZE, greyscale=GREYSCALE)
-    #x_val, y_val = utils.preprocess_lstm(x, y)
 
     if (test_dataset_path):
         print("Test dataset path: " + test_dataset_path)

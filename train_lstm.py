@@ -7,6 +7,11 @@ import sys
 import utils
 import numpy as np
 from keras.models import load_model
+from glob import glob
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 NB_EPOCH = 200
 BATCH_SIZE=32
@@ -18,7 +23,8 @@ STEP = 2
 TRAINING_RATIO = 0.8
 VALIDATION_RATIO = 1
 USE_VALIDATION = True
-TEST=False
+VALIDATE_ONLY=True
+DEBUG=False
 
 if FIRST_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + 40
@@ -26,7 +32,7 @@ if FIRST_DERIVATIVE:
 if SECOND_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + 40
 
-if TEST:
+if DEBUG:
     TRAINING_RATIO = 0.01
     VALIDATION_RATIO = 0.5
     NB_EPOCH = 3
@@ -40,7 +46,9 @@ def process_arguments():
     assert (os.path.isfile(sys.argv[2])), "Error in development set: file doesn't exist."
     assert (int(sys.argv[3]) % 2 == 0), "Error in batch size."
     assert (sys.argv[4]== val for val in ["ssmorm3","rmsprop","adadelta","adagrad","adam","adamax","sgd" ] )
-    assert (not os.path.isdir(sys.argv[5])), "Error in output folder: folder already exists, can't overwrite."
+
+    if not VALIDATE_ONLY:
+        assert (not os.path.isdir(sys.argv[5])), "Error in output folder: folder already exists, can't overwrite."
 
     training_file = sys.argv[1]
     development_file = sys.argv[2]
@@ -50,67 +58,69 @@ def process_arguments():
     if (output_path[-1] != "/"):
         output_path = output_path + "/"
 
-    os.mkdir(output_path)
+    if not VALIDATE_ONLY:
+        os.mkdir(output_path)
 
     return training_file,development_file, batch_size,optimizer_name, output_path
 
-#yield only one sequence each time, then use batchify..
-#TODO: Generalize on sequences of images too
-def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_validate):
+def validate(output_path,generator):
 
-    if(type=="training"):
-        validation_offset = 0
-        index_arr = index_arr_train_dev
+    models_all = glob(output_path + "/*.hdf5")
+    models_all.sort()
 
-    elif (type == "validation"):
-        validation_offset= validation_start
-        index_arr = index_arr_validate
+    x_val,y_val = utils.consume_generator(generator)
+    print(x_val.shape, y_val.shape)
 
-    elif (type == "development"):
-        index_arr = index_arr_train_dev
+    epoch=-1
+    previous_weights = list()
+    all_mean_list = list()
+    for model_weight in models_all:
+        epoch+=1
+        model=load_model(model_weight, ({'SSMORMS3':optimizers.SSMORMS3}) )
 
-    #Generator has to loop forever for keras
-    while 1:
+        weights = model.get_weights()
 
-        facetrack_index = 0
-        # Only facetracks of length bigger than SEQUENCE_LENGTH will be used
-        while (facetrack_index < len(index_arr) - 1):
+        if(epoch >=1):
+            mean_list = list()
+            for i in range(len(weights)):
+                print(weights[i].shape)
+                mean_list.append( np.mean(abs(weights[i] - previous_weights[i] )) )
 
-            if (index_arr[facetrack_index] >= SEQUENCE_LENGTH):
+            print(mean_list)
+            all_mean_list.append(mean_list)
+            print(len(all_mean_list))
 
-                start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
-                end = np.sum(index_arr[0:facetrack_index + 1])
-                #print("Facetrack_index: {}".format(facetrack_index))
-                #print("Before Start {}, End {}".format(start, end))
+            epochs = np.arange(epoch)
+            plt.plot(epochs, all_mean_list)
+            plt.savefig(output_path+'model_weights.png')
 
-                if (type == "validation"):
-                    start = start + validation_offset
-                    end = end + validation_offset
-                    #print("After Start {}, End {}".format(start, end))
+        previous_weights = weights
+        #score_dev = model.evaluate(x_val,y_val)
+        #print('#{epoch:03d} Accuracy = {accuracy:.2f}% (Loss = {loss:.4f})'.format(epoch=epoch,accuracy=score_dev[1]*100,loss=score_dev[0]))
 
-                # load the concened facetrack
-                x, y = utils.load_from_hdf5(file, type=type,start=start, end=end)
-                #print("Size of facetrack: {}".format( len(x)))
+        #correct, total, positive = 0, 0, 0
 
-                # preprocess the facetrack
-                #print(x.shape)
-                #print(y.shape)
-                x_processed, y_processed = utils.preprocess_lstm(x, y,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
-                #print(x_processed.shape)
-                #print(y_processed.shape)
-                #Group facetrack samples as sequences
-                x_train , y_train = utils.sequence_samples(x_processed, y_processed,sequence_length=SEQUENCE_LENGTH, step=STEP,seq2seq=True)
+        #shape of y_pred: (32,25,2)
+        #y_pred = model.predict(x_val)[:,:,1] > 0.5
+        #print(y_pred.shape)
+        #print(y_pred)
+        #y_pred = y_pred[:,:,1] > 0.5
+        #print(y_pred.shape)
+        #print(y_pred)
+        #shape: 32,25
 
-                #print(x_train.shape)
-                #print(y_train.shape)
-                #exit(0)
-                #Yield one sequence only each time
-                for item_x,item_y in zip(x_train,y_train):
+        #print(y.shape)
+        #print(y)
+        #y_true = y_val[:,:, 1]
+        #print(y_true.shape)
+        #print(y_true)
 
-                    yield item_x,item_y
+        #positive = np.sum(y_true) /25
+        #correct = np.sum(y_pred == y_true) /25
+        #total += len(y_true)
+        #print(total)
 
-            #Go to next facetrack
-            facetrack_index = facetrack_index + 1
+        #print('#{epoch:04d} {accuracy:.2f}% (baseline = {baseline:.2f}%)'.format(epoch=epoch,accuracy=100 * correct / total,baseline=100 * positive / total))
 
 if __name__ == "__main__":
 
@@ -122,67 +132,65 @@ if __name__ == "__main__":
     # create batch generator
     signature = ({'type': 'ndarray'}, {'type': 'ndarray'})
 
-    training_generator = lstm_generator(training_file,"training",validation_start,index_arr_train,index_arr_validate)
+    training_generator = utils.lstm_generator(training_file,"training",validation_start,index_arr_train,index_arr_validate,SEQUENCE_LENGTH,STEP,FIRST_DERIVATIVE,SECOND_DERIVATIVE)
     batch_training_generator = batchify(training_generator, signature, batch_size=BATCH_SIZE)
 
-    validation_generator = lstm_generator(training_file, "validation",validation_start, index_arr_train, index_arr_validate)
-    batch_validation_generator = batchify(validation_generator, signature, batch_size=BATCH_SIZE)
-
-    development_generator = lstm_generator(development_file, "development",validation_start, index_array_dev, None)
-    batch_development_generator = batchify(development_generator, signature, batch_size=BATCH_SIZE)
-
-    steps_per_epoch_train, validation_steps, development_steps = \
-        utils.calculate_steps_per_epoch(training_sequence_no_samples, validation_sequence_no_samples, development_sequence_no_samples,
-                                        batch_size=BATCH_SIZE,
-                                        image_generator=False, image_generator_factor=0);
+    steps_per_epoch_train, _, _ = utils.calculate_steps_per_epoch(training_sequence_no_samples, 0, 0, batch_size=BATCH_SIZE);
 
     training_percentage = utils.compute_samples_majority_class(training_file, type="training", start=0,end=training_no_samples)
     print("Training set +ve label percentage: " + str(training_percentage))
 
-    if (USE_VALIDATION):
-        dev_val_generator = batch_validation_generator
-        dev_val_steps = validation_steps
-        percentage = utils.compute_samples_majority_class(training_file, type="validation", start=validation_start,
-                                                          end=validation_start + validation_no_samples)
-        print("Validation set +ve label percentage: " + str(percentage))
+    if VALIDATE_ONLY:
+        validation_generator = utils.lstm_generator(training_file, "validation", validation_start, index_arr_train,
+                                                    index_arr_validate, SEQUENCE_LENGTH, STEP, FIRST_DERIVATIVE,
+                                                    SECOND_DERIVATIVE,forever=False)
+        batch_validation_generator = batchify(validation_generator, signature, batch_size=BATCH_SIZE)
+        validate(output_path,batch_validation_generator)
 
+    #Train
     else:
-        dev_val_generator = batch_development_generator
-        dev_val_steps = development_steps
-        percentage = utils.compute_samples_majority_class(development_file, type="development", start=0, end=development_no_samples)
-        print("Development set +ve label percentage: " + str(percentage))
 
-    #model_callable = stacked_lstm.StackedLSTM(lstm=[128,128],mlp=[128])
-    model_callable = stacked_lstm.StackedLSTM(lstm=[16,16])
-    #model_callable = stacked_lstm.StackedLSTM()
-    model = model_callable(input_shape = (SEQUENCE_LENGTH, INPUT_DIMS) )
+        if (USE_VALIDATION):
+            validation_generator = utils.lstm_generator(training_file, "validation", validation_start, index_arr_train,
+                                                  index_arr_validate,SEQUENCE_LENGTH,STEP,FIRST_DERIVATIVE,SECOND_DERIVATIVE,forever=False)
+            batch_validation_generator = batchify(validation_generator, signature, batch_size=BATCH_SIZE)
+            x_val, y_val = utils.consume_generator(batch_validation_generator)
+            percentage = utils.compute_samples_majority_class(training_file, type="validation", start=validation_start,end=validation_start + validation_no_samples)
+            print("Validation set +ve label percentage: " + str(percentage))
+
+        else:
+            development_generator = utils.lstm_generator(development_file, "development", validation_start, index_array_dev, None,SEQUENCE_LENGTH,STEP,FIRST_DERIVATIVE,SECOND_DERIVATIVE,forever=False)
+            batch_development_generator = batchify(development_generator, signature, batch_size=BATCH_SIZE)
+            x_val, y_val = utils.consume_generator(batch_development_generator)
+            percentage = utils.compute_samples_majority_class(development_file, type="development", start=0, end=development_no_samples)
+            print("Development set +ve label percentage: " + str(percentage))
 
 
-    if(optimizer_name=="ssmorm3"):
-        optimizer = optimizers.SSMORMS3()
-    elif(optimizer_name=="rmsprop"):
-        optimizer = keras.optimizers.RMSprop()
-    elif(optimizer_name=="adam"):
-        optimizer = keras.optimizers.adam()
-    elif (optimizer_name == "adadelta"):
-        optimizer = keras.optimizers.adadelta()
-    elif (optimizer_name == "adamax"):
-        optimizer = keras.optimizers.adamax()
-    elif (optimizer_name == "sgd"):
-        optimizer = keras.optimizers.sgd(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
+        #model_callable = stacked_lstm.StackedLSTM(lstm=[128,128],mlp=[128])
+        model_callable = stacked_lstm.StackedLSTM(lstm=[16,16])
+        #model_callable = stacked_lstm.StackedLSTM()
+        model = model_callable(input_shape = (SEQUENCE_LENGTH, INPUT_DIMS) )
 
-    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc', 'mae'])
+        if(optimizer_name=="ssmorm3"):
+            optimizer = optimizers.SSMORMS3()
+        elif(optimizer_name=="rmsprop"):
+            optimizer = keras.optimizers.RMSprop()
+        elif(optimizer_name=="adam"):
+            optimizer = keras.optimizers.adam()
+        elif (optimizer_name == "adadelta"):
+            optimizer = keras.optimizers.adadelta()
+        elif (optimizer_name == "adamax"):
+            optimizer = keras.optimizers.adamax()
+        elif (optimizer_name == "sgd"):
+            optimizer = keras.optimizers.sgd(lr=0.01, decay=1e-6, momentum=0.9, nesterov=False)
 
-    callbacks_list = utils.get_callabcks_list(output_path=output_path, percentage=percentage,training_percentage = training_percentage)
-    utils.log_description(model=model, path=output_path, training_ratio=TRAINING_RATIO,
-                          validation_ratio=VALIDATION_RATIO,
-                          model_path="Stacked LSTM", dataset_path=training_file, validation_used=USE_VALIDATION,
-                          batch_size=BATCH_SIZE,optimizer=optimizer_name)
+        model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc', 'mae'])
 
-    model.fit_generator(batch_training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = dev_val_generator, validation_steps=dev_val_steps, callbacks= callbacks_list)
+        callbacks_list = utils.get_callabcks_list(output_path=output_path, percentage=percentage,training_percentage = training_percentage)
+        utils.log_description(model=model, path=output_path, training_ratio=TRAINING_RATIO,
+                              validation_ratio=VALIDATION_RATIO,
+                              model_path="Stacked LSTM", dataset_path=training_file, validation_used=USE_VALIDATION,
+                              batch_size=BATCH_SIZE,optimizer=optimizer_name)
 
-    #model.load_weights("/vol/work1/dyab/training_models/lstm_ssmorm3_layers_2_128_step_2_tiny_epoch/Epoch.93_Training_Acc.1.00.hdf5")
-    #score_dev = model.evaluate_generator(batch_development_generator, development_steps)
-    #print("dev"+"_acc,"+"dev"+"_loss,"+"dev"+"_mean_absolute_error")
-    #print(str(score_dev[1]) + "," + str(score_dev[0]) + "," + str(score_dev[2]))
+        model.fit_generator(batch_training_generator, verbose=1, steps_per_epoch=steps_per_epoch_train, epochs=NB_EPOCH, validation_data = (x_val,y_val), callbacks= callbacks_list)
 

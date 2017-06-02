@@ -4,6 +4,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.animation as animation
 import timeit
 from keras.callbacks import Callback
 from keras.utils.io_utils import HDF5Matrix
@@ -11,6 +12,7 @@ import scipy.misc
 from keras.utils.np_utils import to_categorical
 from keras.callbacks import ModelCheckpoint, CSVLogger
 import sys
+
 
 DEFAULT_IMAGE_SIZE=224
 IMAGE_SIZE_112 = 112
@@ -291,7 +293,6 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     length = len(x)
 
     length = length - ( (length % sequence_length) % step)
-    #print(length)
 
     #Trim list to be equal to calculated length
     x = x[0:length]
@@ -300,11 +301,8 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     #create list of indices that they numpy array will be split on
     new_indices = np.arange(0, length, sequence_length)
 
-    #print(new_indices)
     #Incorporate the step size in the sequence indices
     new_indices_list = [(new_indices + z) for z in range(0, sequence_length, step)]
-
-    #print(new_indices_list)
 
     #Actually split the array according to the indices
     #will return empty lists for exceeding length .. that can be removed later
@@ -319,8 +317,6 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
     new_seq_x = list(filter(lambda x: len(x) >= sequence_length, new_seq_x))
     new_seq_y = list(filter(lambda y: len(y) >= sequence_length, new_seq_y))
 
-    #print(new_seq_y)
-
     #Only reshape and concatenate arrays if they are more than one ...
     if(len(new_seq_x) > 1 and len(new_seq_y) > 1):
         #Actually reshape each sequence
@@ -334,27 +330,27 @@ def sequence_samples(x, y, sequence_length, step, seq2seq):
         new_seq_x = np.array(new_seq_x)
         new_seq_y = np.array(new_seq_y)
 
-    #"clean the y value of sequence, either all ones or all zeroes according to majority
-    if(seq2seq):
-
-        for i in range(len(new_seq_y)):
-            clean_value = np.zeros((sequence_length,2))
-            majority = np.sum(new_seq_y[i,:, 1])
-            if majority >= int(sequence_length / 2):
-                clean_value[:,1] =1
-            else:
-                clean_value[:, 0] = 1
-            new_seq_y[i] = clean_value
-
     #If one output label is needed for the sequence, instead of a sequence of outputs
     if(not seq2seq):
         raise NotImplementedError("Not implemented")
         #Compute y_mt using the majority of labels in y
         #y_mt = compute_y_mt(y[0:sequence_length,:],sequence_length=sequence_length)
 
-    #print(len(new_seq_x))
-    #print(len(new_seq_y))
     return new_seq_x,new_seq_y
+
+def seq2eq(seq_y,sequence_length):
+
+    for i in range(len(seq_y)):
+        clean_value = np.zeros((sequence_length, 2))
+        majority = np.sum(seq_y[i, :, 1])
+        if majority >= int(sequence_length / 2):
+            clean_value[:, 1] = 1
+        else:
+            clean_value[:, 0] = 1
+
+        seq_y[i] = clean_value
+
+    return seq_y
 
 def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative=False):
 
@@ -365,11 +361,9 @@ def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative
     #Change y to categorical
     y_train = to_categorical(y_np, num_classes=2)
 
-    #TODO: Do we need to normalize sth ?
     if normalize:
         raise NotImplementedError("Not implemented")
 
-    #print(x_np.shape)
     if first_derivative:
 
         x_np_delta = np.zeros((x_np.shape[0],x_np.shape[1]*2))
@@ -383,9 +377,6 @@ def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative
                 delta_x[j] = x_np[i][j+2] - x_np[i][j-2]
 
             x_np_delta[i] = np.concatenate((x_np[i],delta_x))
-
-        #print(x_np_delta.shape)
-        #print(x_np_delta)
 
         #second derivative is computed as a result of the first
         if second_derivative:
@@ -401,11 +392,7 @@ def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative
                     #40 because we are computing using 1st derivative input
                     delta2_x[j] = x_np_delta[i][40 + j + 2] - x_np_delta[i][40 + j - 2]
 
-
                 x_np_delta2[i] = np.concatenate((x_np_delta[i], delta2_x))
-
-            #print(x_np_delta2.shape)
-            #print(x_np_delta2)
 
             return x_np_delta2,y_train
 
@@ -444,33 +431,24 @@ def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_val
 
                 start = np.sum(index_arr[0:facetrack_index]) #will return zero if facetrack_index is zero
                 end = np.sum(index_arr[0:facetrack_index + 1])
-                #print("Facetrack_index: {}".format(facetrack_index))
-                #print("Before Start {}, End {}".format(start, end))
 
                 if (type == "validation"):
                     start = start + validation_offset
                     end = end + validation_offset
-                    #print("After Start {}, End {}".format(start, end))
 
                 # load the concened facetrack
                 x, y = load_from_hdf5(file, type=type,start=start, end=end)
-                #print("Size of facetrack: {}".format( len(x)))
 
                 # preprocess the facetrack
-                #print(x.shape)
-                #print(y.shape)
                 x_processed, y_processed = preprocess_lstm(x, y,first_derivative=first_derivative,second_derivative=second_derivative)
-                #print(x_processed.shape)
-                #print(y_processed.shape)
+
                 #Group facetrack samples as sequences
                 x_train , y_train = sequence_samples(x_processed, y_processed,sequence_length=sequence_length, step=step,seq2seq=True)
 
-                #print(x_train.shape)
-                #print(y_train.shape)
-                #exit(0)
                 #Yield one sequence only each time
                 for item_x,item_y in zip(x_train,y_train):
 
+                    #visualize_mouth(item_x,item_y)
                     yield item_x,item_y
 
             #Go to next facetrack

@@ -170,7 +170,7 @@ def load_from_hdf5(dir,type,start=0,end=None,labels_only=False):
     return X_train,y_train
 
 
-def load_as_numpy_array(dir,type,validation_start=0,validation_size=None):
+def load_as_numpy_array(dir,type=None,validation_start=0,validation_size=None):
 
     x_dataset,y_dataset = np.empty((0)),np.empty((0))
     file = h5py.File(dir, 'r')  # 'r' means that hdf5 file is open in read-only mode
@@ -190,6 +190,10 @@ def load_as_numpy_array(dir,type,validation_start=0,validation_size=None):
     elif (type == "test"):
         x_dataset = np.array(file['test_input'])
         y_dataset = np.array(file['test_labels'])
+
+    else:
+        x_dataset = np.array(file['input'])
+        y_dataset = np.array(file['labels'])
 
     file.close()
 

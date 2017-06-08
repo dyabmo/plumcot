@@ -4,7 +4,6 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.animation as animation
 import timeit
 from keras.callbacks import Callback
 from keras.utils.io_utils import HDF5Matrix
@@ -12,6 +11,7 @@ import scipy.misc
 from keras.utils.np_utils import to_categorical
 from keras.callbacks import ModelCheckpoint, CSVLogger
 import sys
+from glob import glob
 
 
 DEFAULT_IMAGE_SIZE=224
@@ -451,7 +451,7 @@ def lstm_generator(file,type,validation_start, index_arr_train_dev,index_arr_val
 
                 #Yield one sequence only each time
                 for item_x,item_y in zip(x_train,y_train):
-
+                    #import matplotlib.animation as animation
                     #visualize_mouth(item_x,item_y)
                     yield item_x,item_y
 
@@ -634,3 +634,32 @@ def get_callabcks_list(output_path,percentage,training_percentage):
     time_logger = TimeLogger(output_path + "time_logger.csv")
     checkpoint = ModelCheckpoint(output_path + "Epoch.{epoch:02d}_Training_Acc.{acc:.2f}.hdf5", verbose=1)
     return [plotter, csv_logger, time_logger, checkpoint]
+
+def save_sequences(output_path, generator_train, generator_val):
+
+    models_all = glob(output_path + "/*.hdf5")
+    models_all.sort()
+
+    x_val,y_val = consume_generator(generator_val)
+    x_train, y_train = consume_generator(generator_train)
+
+    f1 = h5py.File("lstm_trainingset_complete.hdf5", 'w')
+    f2 = h5py.File("lstm_validationset_complete.hdf5", 'w')
+
+    f1.attrs['size'] = x_train.shape[0]
+    # Creating dataset to store features
+    f1.create_dataset('input', data=x_train)
+    # Creating dataset to store labels
+    f1.create_dataset('labels', data=y_train)
+
+    f2.attrs['size'] = x_val.shape[0]
+    # Creating dataset to store features
+    f2.create_dataset('input', data=x_val)
+    # Creating dataset to store labels
+    f2.create_dataset('labels', data=y_val)
+
+    f1.flush()
+    f1.close()
+
+    f2.flush()
+    f2.close()

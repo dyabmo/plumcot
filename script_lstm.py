@@ -1,10 +1,11 @@
-from keras import optimizers
+####################################
+#Originally authored by Hervé Bredin
+#####################################
+
 from keras.utils import to_categorical
 from pyannote.generators.batch import batchify
 from pyannote.audio.labeling.models import StackedLSTM
-from pyannote.audio.optimizers import SSMORMS3
 from keras.callbacks import ModelCheckpoint
-import scipy.misc
 from tqdm import tqdm
 from keras.models import load_model
 from sklearn.metrics import roc_auc_score
@@ -16,11 +17,25 @@ import sys
 import utils
 
 NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks'
+DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks'
+TEST_NUMPY_PATH='/vol/work1/dyab/test_set/numpy_arrays_landmarks'
 BATCH_SIZE = 32
 CATEGORICAL=False
 REMOVE_LCP_TOPQUESTIONS=True
-FIRST_DERIVATIVE=True
-SECOND_DERIVATIVE=True
+FIRST_DERIVATIVE=False
+SECOND_DERIVATIVE=False
+USE_FACE=True
+INPUT_DIMS = 40
+
+if USE_FACE:
+    INPUT_DIMS = 136
+    NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks_face'
+
+if FIRST_DERIVATIVE:
+    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
+
+if SECOND_DERIVATIVE:
+    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
 
 # preprocess images (resize, normalize, crop) and labels (to_categorical)
 def preprocess(X, y):
@@ -30,13 +45,33 @@ def preprocess(X, y):
 X_PATHS = sorted(glob(NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS = sorted(glob(NUMPY_PATH + '/*.Y.npy'))
 
+X_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.XLandmarks.npy'))
+Y_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.Y.npy'))
+
+X_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.XLandmarks.npy'))
+Y_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.Y.npy'))
+
 # If you want to remove LCP videos.
 if REMOVE_LCP_TOPQUESTIONS:
     X_PATHS = [f for f in X_PATHS if "LCP_TopQuestions" not in f ]
     Y_PATHS = [f for f in Y_PATHS if "LCP_TopQuestions" not in f ]
+    X_PATHS_DEV = [f for f in X_PATHS_DEV if "LCP_TopQuestions" not in f ]
+    Y_PATHS_DEV = [f for f in Y_PATHS_DEV if "LCP_TopQuestions" not in f ]
+    X_PATHS_TEST = [f for f in X_PATHS_TEST if "LCP_TopQuestions" not in f]
+    Y_PATHS_TEST = [f for f in Y_PATHS_TEST if "LCP_TopQuestions" not in f]
 
 # make sure they are loaded in the same order (X must match y)
 for xp, yp in zip(X_PATHS, Y_PATHS):
+    if xp[:-15] != yp[:-6]:
+        print(xp, yp)
+        sys.exit()
+
+for xp, yp in zip(X_PATHS_DEV, Y_PATHS_DEV):
+    if xp[:-15] != yp[:-6]:
+        print(xp, yp)
+        sys.exit()
+
+for xp, yp in zip(X_PATHS_TEST, Y_PATHS_TEST):
     if xp[:-15] != yp[:-6]:
         print(xp, yp)
         sys.exit()
@@ -45,6 +80,7 @@ for xp, yp in zip(X_PATHS, Y_PATHS):
 N_TRACKS = len(X_PATHS)
 LAST_TRACK = int(N_TRACKS * 0.9)
 STEP = 10
+
 
 # compute stats (number of samples, number of positive)
 def statistics(y_paths):
@@ -77,8 +113,6 @@ def get_generator(x_paths, y_paths, forever=True):
 
             X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
 
-            print(X_normalized_deriv.shape)
-
             for i in range(n_samples - 25):
                 x = X_normalized_deriv[i:i+25]
                 y = Y[i:i+25]
@@ -109,14 +143,14 @@ def train(x_paths, y_paths, weights_dir):
 
     # create model
     if CATEGORICAL:
-        model = StackedLSTM()((25, 40))
+        model = StackedLSTM()((25, INPUT_DIMS))
         model.compile(loss='categorical_crossentropy',
                   optimizer='rmsprop', metrics=['acc'])
     else:
 
-        model = StackedLSTM(final_activation="sigmoid",n_classes=1)((25, 40))
+        model = StackedLSTM(final_activation="sigmoid",n_classes=1)((25, INPUT_DIMS))
         #only 4 units
-        #model = StackedLSTM(lstm=[4,],mlp=[],final_activation="sigmoid",n_classes=1)((25, 40))
+        #model = StackedLSTM(lstm=[4,],mlp=[],final_activation="sigmoid",n_classes=1)((25, INPUT_DIMS))
 
         model.compile(loss='binary_crossentropy',
                       optimizer='rmsprop', metrics=['acc'])
@@ -130,7 +164,7 @@ def train(x_paths, y_paths, weights_dir):
 def validate(x_paths, y_paths, weights_dir):
 
     epoch = 0
-    f = open(WEIGHTS_DIR+"/list_validate",'w')
+    f = open(WEIGHTS_DIR+"/list_train",'w')
     while True:
 
         # sleep until next epoch is finished
@@ -167,7 +201,7 @@ def validate(x_paths, y_paths, weights_dir):
 if CATEGORICAL:
     WEIGHTS_DIR = "/vol/work1/dyab/training_models/bredin/derivatives"
 else:
-    WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/derivatives'
+    WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives'
 
 #Split both X_PATHS and Y_PATHS
 index_list = list()
@@ -186,12 +220,24 @@ VALIDATION_X_PATHS = X_PATHS[9::STEP]
 VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
 
 print(N_TRACKS)
-train(TRAINING_X_PATHS,
-      TRAINING_Y_PATHS,
-     WEIGHTS_DIR)
+#train(TRAINING_X_PATHS,
+#      TRAINING_Y_PATHS,
+#     WEIGHTS_DIR)
+
+validate(TRAINING_X_PATHS,
+         TRAINING_Y_PATHS,
+         WEIGHTS_DIR)
 
 #validate(VALIDATION_X_PATHS,
 #         VALIDATION_Y_PATHS,
+#         WEIGHTS_DIR)
+
+#validate(X_PATHS_DEV,
+#         Y_PATHS_DEV,
+#         WEIGHTS_DIR)
+
+#validate(X_PATHS_TEST,
+#         Y_PATHS_TEST,
 #         WEIGHTS_DIR)
 
 #########################################################
@@ -202,11 +248,3 @@ train(TRAINING_X_PATHS,
 #validate(X_PATHS[:LAST_TRACK],
 #         Y_PATHS[:LAST_TRACK],
 #         WEIGHTS_DIR)
-
-#signature = ({'type': 'ndarray'}, {'type': 'ndarray'})
-#train_generator = get_generator(X_PATHS[:LAST_TRAIN_TRACK], Y_PATHS[:LAST_TRAIN_TRACK])
-#train_batch_generator = batchify(train_generator, signature, batch_size=BATCH_SIZE)
-#val_generator = get_generator(X_PATHS[LAST_TRAIN_TRACK:], Y_PATHS[LAST_TRAIN_TRACK:])
-#val_batch_generator = batchify(val_generator, signature, batch_size=BATCH_SIZE)
-#import utils
-#utils.save_sequences("/vol/work1/dyab/training_set/",train_batch_generator,val_batch_generator)

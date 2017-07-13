@@ -18,6 +18,9 @@ import utils
 NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks'
 BATCH_SIZE = 32
 CATEGORICAL=False
+REMOVE_LCP_TOPQUESTIONS=True
+FIRST_DERIVATIVE=True
+SECOND_DERIVATIVE=True
 
 # preprocess images (resize, normalize, crop) and labels (to_categorical)
 def preprocess(X, y):
@@ -26,6 +29,11 @@ def preprocess(X, y):
 # load list of paths to numpy files
 X_PATHS = sorted(glob(NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS = sorted(glob(NUMPY_PATH + '/*.Y.npy'))
+
+# If you want to remove LCP videos.
+if REMOVE_LCP_TOPQUESTIONS:
+    X_PATHS = [f for f in X_PATHS if "LCP_TopQuestions" not in f ]
+    Y_PATHS = [f for f in Y_PATHS if "LCP_TopQuestions" not in f ]
 
 # make sure they are loaded in the same order (X must match y)
 for xp, yp in zip(X_PATHS, Y_PATHS):
@@ -67,12 +75,12 @@ def get_generator(x_paths, y_paths, forever=True):
 
             n_samples = X_normalized.shape[0]
 
-            X_normalized,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=True,second_derivative=True)
+            X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
 
-            print(X_normalized.shape)
+            print(X_normalized_deriv.shape)
 
             for i in range(n_samples - 25):
-                x = X_normalized[i:i+25]
+                x = X_normalized_deriv[i:i+25]
                 y = Y[i:i+25]
                 #print(x.shape)
                 #print(y.shape)
@@ -157,7 +165,7 @@ def validate(x_paths, y_paths, weights_dir):
         epoch += 1
 
 if CATEGORICAL:
-    WEIGHTS_DIR = "/vol/work1/dyab/training_models/bredin"
+    WEIGHTS_DIR = "/vol/work1/dyab/training_models/bredin/derivatives"
 else:
     WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/derivatives'
 
@@ -170,26 +178,21 @@ for i in range(0, N_TRACKS-STEP ,STEP):
 #flatten list
 index_list = [val for sublist in index_list for val in sublist]
 
-
 TRAINING_X_PATHS = np.take(X_PATHS,index_list)
 TRAINING_Y_PATHS = np.take(Y_PATHS,index_list)
-
-# If you want to remove LCP videos.
-X_PATHS = [f for f in X_PATHS if "LCP_TopQuestions" not in f ]
-Y_PATHS = [f for f in Y_PATHS if "LCP_TopQuestions" not in f ]
 
 #take the 10th out of each 10 sequences
 VALIDATION_X_PATHS = X_PATHS[9::STEP]
 VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
 
 print(N_TRACKS)
-#train(TRAINING_X_PATHS,
-#      TRAINING_Y_PATHS,
-#     WEIGHTS_DIR)
+train(TRAINING_X_PATHS,
+      TRAINING_Y_PATHS,
+     WEIGHTS_DIR)
 
-validate(VALIDATION_X_PATHS,
-         VALIDATION_Y_PATHS,
-         WEIGHTS_DIR)
+#validate(VALIDATION_X_PATHS,
+#         VALIDATION_Y_PATHS,
+#         WEIGHTS_DIR)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

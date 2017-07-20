@@ -1,5 +1,5 @@
 from pyannote.core import Segment
-from pyannote.audio.features import Precomputed
+from pyannote.audio.features import Precomputed, utils
 import pandas as pd
 import numpy as np
 from glob import glob
@@ -19,35 +19,45 @@ y_labels_dir = "/vol/work1/dyab/training_set/numpy_arrays_local_landmarks/"
 
 for current_file in protocol.train():      # iterate on all files of Phase2 training set
     print(current_file['uri'])
+    landmarks_file_name = train_dir + current_file['uri'] + '.track.txt'
+
     #keys: uri, database
-    features = precomputed(current_file)   # load precomputed features
+    try:
+        features = precomputed(current_file)   # load precomputed features
+        face_landmarks_numpy_array =  pd.read_csv(landmarks_file_name, sep=" ", header=None)
 
-    #get face landmarks file containing  facetrack segments
-    landmarks_file_name = train_dir + current_file['uri']+'.track.txt'
-    face_landmarks_numpy_array =  pd.read_csv(landmarks_file_name, sep=" ", header=None)
-    face_landmarks_numpy_array.columns =  ["time", "id", "left", "top","right","bottom","state"]
+    except utils.PyannoteFeatureExtractionError:
+        print("No features extracted for" +current_file['uri'] )
+        continue
+    except FileNotFoundError:
+        print(landmarks_file_name+" not found")
+        continue
+    else:
 
-    group_time_by_id = face_landmarks_numpy_array[['time', 'id']].groupby('id', as_index=False)
+        #get face landmarks file containing  facetrack segments
+        face_landmarks_numpy_array.columns =  ["time", "id", "left", "top","right","bottom","state"]
 
-    #extract only relevant facetracks
-    # Extract all Y numpy arrays ( all facetrack files) relevant to that file only
-    y_numpy_arrays_names = glob(y_labels_dir + current_file['uri'] + "*.Y.npy")
+        group_time_by_id = face_landmarks_numpy_array[['time', 'id']].groupby('id', as_index=False)
 
-    # get the list of facetracks ids
-    y_numpy_arrays = list(map(lambda y: y.split("/")[-1].split(".")[1], y_numpy_arrays_names))
-    #print(y_numpy_arrays)
+        #extract only relevant facetracks
+        # Extract all Y numpy arrays ( all facetrack files) relevant to that file only
+        y_numpy_arrays_names = glob(y_labels_dir + current_file['uri'] + "*.Y.npy")
 
-    for index in range(len(y_numpy_arrays)):
-        id = int(y_numpy_arrays[index])
-        #print(id)
-        min = group_time_by_id.min().ix[id]['time'].min()
-        max = group_time_by_id.min().ix[id]['time'].max()
+        # get the list of facetracks ids
+        y_numpy_arrays = list(map(lambda y: y.split("/")[-1].split(".")[1], y_numpy_arrays_names))
+        #print(y_numpy_arrays)
 
-        Xa = features.crop(Segment(min, max))   # obtain features as numpy array for given temporal segment
-        Yv = np.load(y_labels_dir + current_file['uri'] + "." + str(id) + ".Y.npy")
+        for index in range(len(y_numpy_arrays)):
+            id = int(y_numpy_arrays[index])
+            #print(id)
+            min = group_time_by_id.min().ix[id]['time'].min()
+            max = group_time_by_id.min().ix[id]['time'].max()
 
-        np.save(output_dir_train + current_file['uri'] + '.' + str(id) + '.Xa.npy', Xa)
-        np.save(output_dir_train + current_file['uri']  + '.' + str(id) + '.Y.npy', Yv)
+            Xa = features.crop(Segment(min, max))   # obtain features as numpy array for given temporal segment
+            Yv = np.load(y_labels_dir + current_file['uri'] + "." + str(id) + ".Y.npy")
+
+            np.save(output_dir_train + current_file['uri'] + '.' + str(id) + '.Xa.npy', Xa)
+            np.save(output_dir_train + current_file['uri']  + '.' + str(id) + '.Y.npy', Yv)
 
 
 def create_uem(input_name,output_name):

@@ -16,20 +16,26 @@ import time
 import sys
 import utils
 
+NUMPY_PATH_AUDIO = "/vol/work1/dyab/training_set/numpy_arrays_local_audio"
 NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks'
 DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks'
 TEST_NUMPY_PATH='/vol/work1/dyab/test_set/numpy_arrays_landmarks'
 BATCH_SIZE = 32
+
 CATEGORICAL=False
 REMOVE_LCP_TOPQUESTIONS=True
 FIRST_DERIVATIVE=False
 SECOND_DERIVATIVE=False
 USE_FACE=True
+USE_AUDIO = True
 INPUT_DIMS = 40
+WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio'
 
 if USE_FACE:
     INPUT_DIMS = 136
     NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks_face'
+    DEV_NUMPY_PATH = '/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks_face'
+    TEST_NUMPY_PATH = '/vol/work1/dyab/test_set/numpy_arrays_landmarks_face'
 
 if FIRST_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
@@ -37,13 +43,34 @@ if FIRST_DERIVATIVE:
 if SECOND_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
 
+if USE_AUDIO:
+    INPUT_DIMS = INPUT_DIMS + 59
+
 # preprocess images (resize, normalize, crop) and labels (to_categorical)
 def preprocess(X, y):
     return X, to_categorical(y, num_classes=2)
 
 # load list of paths to numpy files
+
+X_PATHS_AUDIO = sorted(glob(NUMPY_PATH_AUDIO + '/*.Xa.npy'))
 X_PATHS = sorted(glob(NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS = sorted(glob(NUMPY_PATH + '/*.Y.npy'))
+
+#make sure audio and video files are the same
+X_PATHS = [f for f in X_PATHS if "BFMTV_BFMStory_2012-07-16_175800" not in f]
+X_PATHS = [f for f in X_PATHS if "LCP_EntreLesLignes_2012-10-16_032500" not in f]
+X_PATHS = [f for f in X_PATHS if "LCP_LCPInfo13h30_2012-04-04_132700" not in f]
+
+Y_PATHS = [f for f in Y_PATHS if "BFMTV_BFMStory_2012-07-16_175800" not in f]
+Y_PATHS = [f for f in Y_PATHS if "LCP_EntreLesLignes_2012-10-16_032500" not in f]
+Y_PATHS = [f for f in Y_PATHS if "LCP_LCPInfo13h30_2012-04-04_132700" not in f]
+
+
+#x_names_audio = list(map(lambda x: x.split("/")[-1].split(".")[0], X_PATHS_AUDIO))
+#x_names = list(map(lambda x: x.split("/")[-1].split(".")[0], X_PATHS))
+#intersection = [ item for item in x_names_audio if item in x_names]
+#print(intersection)
+#exit(0)
 
 X_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.Y.npy'))
@@ -59,6 +86,11 @@ if REMOVE_LCP_TOPQUESTIONS:
     Y_PATHS_DEV = [f for f in Y_PATHS_DEV if "LCP_TopQuestions" not in f ]
     X_PATHS_TEST = [f for f in X_PATHS_TEST if "LCP_TopQuestions" not in f]
     Y_PATHS_TEST = [f for f in Y_PATHS_TEST if "LCP_TopQuestions" not in f]
+
+for xp, xa in zip(X_PATHS, X_PATHS_AUDIO):
+    if xp.split("/")[-1][:-15] != xa.split("/")[-1][:-7]:
+        print(xp, xa)
+        sys.exit()
 
 # make sure they are loaded in the same order (X must match y)
 for xp, yp in zip(X_PATHS, Y_PATHS):
@@ -93,15 +125,20 @@ def statistics(y_paths):
     return n_samples, n_positive
 
 # basic generator that loops forever or just once
-def get_generator(x_paths, y_paths, forever=True):
+def get_generator(x_paths, y_paths, forever=True,x_paths_audio=None):
     first_loop = True
     while forever or first_loop:
-        for x_path, y_path in zip(x_paths, y_paths):
+        for x_path, y_path,x_path_audio in zip(x_paths, y_paths,x_paths_audio):
+
+            #print(x_path_audio)
+            #print(x_path)
+            X = np.load(x_path)
+            Xa = np.load(x_path_audio)
 
             if CATEGORICAL:
-                X, Y = np.load(x_path), to_categorical(np.load(y_path), num_classes=2)
+                Y = to_categorical(np.load(y_path), num_classes=2)
             else:
-                X, Y = np.load(x_path), np.load(y_path)
+                Y = np.load(y_path)
                 Y=Y.reshape((len(Y),1))
 
             #Normalization on facetrack level
@@ -109,19 +146,26 @@ def get_generator(x_paths, y_paths, forever=True):
             std = np.std(X, axis=0)
             X_normalized = (X - mean) / std
 
-            n_samples = X_normalized.shape[0]
+            #choose the minumum number of samples of both
+            n_samples = min(X_normalized.shape[0],Xa.shape[0])
 
             X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
+            #print(Xa.shape)
+            #print(X.shape)
 
             for i in range(n_samples - 25):
-                x = X_normalized_deriv[i:i+25]
+                xv = X_normalized_deriv[i:i+25]
                 y = Y[i:i+25]
+                xa = Xa[i:i+25]
+                #print(xv.shape)
+                #print (xa.shape)
+                x = np.hstack((xv,xa))
                 #print(x.shape)
-                #print(y.shape)
+
                 yield x, y
         first_loop = False
 
-def train(x_paths, y_paths, weights_dir):
+def train(x_paths, y_paths, weights_dir,x_paths_audio=None):
     n_samples, n_positive = statistics(y_paths)
 
     # estimate performance of "majority class" baseline
@@ -132,7 +176,7 @@ def train(x_paths, y_paths, weights_dir):
     steps_per_epoch = n_samples // BATCH_SIZE
 
     # create batch generator
-    generator = get_generator(x_paths, y_paths)
+    generator = get_generator(x_paths, y_paths,x_paths_audio=x_paths_audio)
     if CATEGORICAL:
         signature = ({'type': 'ndarray'}, {'type': 'ndarray'})
     else:
@@ -164,7 +208,7 @@ def train(x_paths, y_paths, weights_dir):
 def validate(x_paths, y_paths, weights_dir):
 
     epoch = 0
-    f = open(WEIGHTS_DIR+"/list_train",'w')
+    f = open(WEIGHTS_DIR+"/list_test",'w')
     while True:
 
         # sleep until next epoch is finished
@@ -198,11 +242,6 @@ def validate(x_paths, y_paths, weights_dir):
 
         epoch += 1
 
-if CATEGORICAL:
-    WEIGHTS_DIR = "/vol/work1/dyab/training_models/bredin/derivatives"
-else:
-    WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives'
-
 #Split both X_PATHS and Y_PATHS
 index_list = list()
 for i in range(0, N_TRACKS-STEP ,STEP):
@@ -214,19 +253,22 @@ index_list = [val for sublist in index_list for val in sublist]
 
 TRAINING_X_PATHS = np.take(X_PATHS,index_list)
 TRAINING_Y_PATHS = np.take(Y_PATHS,index_list)
+TRAINING_X_PATHS_AUDIO = np.take(X_PATHS_AUDIO,index_list)
 
 #take the 10th out of each 10 sequences
 VALIDATION_X_PATHS = X_PATHS[9::STEP]
 VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
 
 print(N_TRACKS)
-#train(TRAINING_X_PATHS,
-#      TRAINING_Y_PATHS,
-#     WEIGHTS_DIR)
+if USE_AUDIO:
+    train(TRAINING_X_PATHS,
+          TRAINING_Y_PATHS,
+          WEIGHTS_DIR,
+          TRAINING_X_PATHS_AUDIO)
 
-validate(TRAINING_X_PATHS,
-         TRAINING_Y_PATHS,
-         WEIGHTS_DIR)
+#validate(TRAINING_X_PATHS,
+#         TRAINING_Y_PATHS,
+#         WEIGHTS_DIR)
 
 #validate(VALIDATION_X_PATHS,
 #         VALIDATION_Y_PATHS,
@@ -237,7 +279,7 @@ validate(TRAINING_X_PATHS,
 #         WEIGHTS_DIR)
 
 #validate(X_PATHS_TEST,
-#         Y_PATHS_TEST,
+#        Y_PATHS_TEST,
 #         WEIGHTS_DIR)
 
 #########################################################

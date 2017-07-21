@@ -11,53 +11,63 @@ from pyannote.database import get_protocol
 protocol = get_protocol('REPERE.SpeakerDiarization.Plumcot')
 precomputed = Precomputed('/vol/work1/dyab/training_set/mfcc')
 
+train_dir = "/vol/work1/dyab/training_set/residual_local/"
+output_dir_train = "/vol/work1/dyab/training_set/numpy_arrays_local_audio/"
+y_labels_dir_train = "/vol/work1/dyab/training_set/numpy_arrays_local_landmarks/"
+
 dev_dir="/vol/work1/dyab/development_set/residual_cluster_old/"
-train_dir="/vol/work1/dyab/training_set/residual_local/"
+output_dir_dev = "/vol/work1/dyab/development_set/numpy_arrays_cluster_old_audio/"
+y_labels_dir_dev = "/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks/"
+
 test_dir="/vol/work1/dyab/test_set/residual/"
-output_dir_train ="/vol/work1/dyab/training_set/numpy_arrays_local_audio/"
-y_labels_dir = "/vol/work1/dyab/training_set/numpy_arrays_local_landmarks/"
+output_dir_test =  "/vol/work1/dyab/test_set/numpy_arrays_audio/"
+y_labels_dir_test = "/vol/work1/dyab/test_set/numpy_arrays_landmarks/"
 
-for current_file in protocol.train():      # iterate on all files of Phase2 training set
-    print(current_file['uri'])
-    landmarks_file_name = train_dir + current_file['uri'] + '.track.txt'
+def generate_audio_features(dir,output_dir,y_labels_dir):
 
-    #keys: uri, database
-    try:
-        features = precomputed(current_file)   # load precomputed features
-        face_landmarks_numpy_array =  pd.read_csv(landmarks_file_name, sep=" ", header=None)
+    for current_file in protocol.test():      # iterate on all files of Phase2 training set
+        print(current_file['uri'])
+        landmarks_file_name = dir + current_file['uri'] + '.track.txt'
 
-    except utils.PyannoteFeatureExtractionError:
-        print("No features extracted for" +current_file['uri'] )
-        continue
-    except FileNotFoundError:
-        print(landmarks_file_name+" not found")
-        continue
-    else:
+        #keys: uri, database
+        try:
+            features = precomputed(current_file)   # load precomputed features
+            face_landmarks_numpy_array =  pd.read_csv(landmarks_file_name, sep=" ", header=None)
 
-        #get face landmarks file containing  facetrack segments
-        face_landmarks_numpy_array.columns =  ["time", "id", "left", "top","right","bottom","state"]
+        except utils.PyannoteFeatureExtractionError:
+            print("No features extracted for" +current_file['uri'] )
+            continue
+        except FileNotFoundError:
+            print(landmarks_file_name+" not found")
+            continue
+        else:
 
-        group_time_by_id = face_landmarks_numpy_array[['time', 'id']].groupby('id', as_index=False)
+            #get face landmarks file containing  facetrack segments
+            face_landmarks_numpy_array.columns =  ["time", "id", "left", "top","right","bottom","state"]
 
-        #extract only relevant facetracks
-        # Extract all Y numpy arrays ( all facetrack files) relevant to that file only
-        y_numpy_arrays_names = glob(y_labels_dir + current_file['uri'] + "*.Y.npy")
+            group_time_by_id = face_landmarks_numpy_array[['time', 'id']].groupby('id', as_index=False)
 
-        # get the list of facetracks ids
-        y_numpy_arrays = list(map(lambda y: y.split("/")[-1].split(".")[1], y_numpy_arrays_names))
-        #print(y_numpy_arrays)
+            #extract only relevant facetracks
+            # Extract all Y numpy arrays ( all facetrack files) relevant to that file only
+            y_numpy_arrays_names = glob(y_labels_dir + current_file['uri'] + "*.Y.npy")
 
-        for index in range(len(y_numpy_arrays)):
-            id = int(y_numpy_arrays[index])
-            #print(id)
-            min = group_time_by_id.min().ix[id]['time'].min()
-            max = group_time_by_id.min().ix[id]['time'].max()
+            # get the list of facetracks ids
+            y_numpy_arrays = list(map(lambda y: y.split("/")[-1].split(".")[1], y_numpy_arrays_names))
+            #print(y_numpy_arrays)
 
-            Xa = features.crop(Segment(min, max))   # obtain features as numpy array for given temporal segment
-            Yv = np.load(y_labels_dir + current_file['uri'] + "." + str(id) + ".Y.npy")
+            for index in range(len(y_numpy_arrays)):
+                id = int(y_numpy_arrays[index])
+                #print(id)
+                min = group_time_by_id.min().ix[id]['time']
+                max = group_time_by_id.max().ix[id]['time']
 
-            np.save(output_dir_train + current_file['uri'] + '.' + str(id) + '.Xa.npy', Xa)
-            np.save(output_dir_train + current_file['uri']  + '.' + str(id) + '.Y.npy', Yv)
+                #print(min,max)
+
+                Xa = features.crop(Segment(min, max))   # obtain features as numpy array for given temporal segment
+                Yv = np.load(y_labels_dir + current_file['uri'] + "." + str(id) + ".Y.npy")
+
+                np.save(output_dir + current_file['uri'] + '.' + str(id) + '.Xa.npy', Xa)
+                np.save(output_dir + current_file['uri'] + '.' + str(id) + '.Y.npy', Yv)
 
 
 def create_uem(input_name,output_name):
@@ -72,3 +82,5 @@ def create_uem(input_name,output_name):
 #create_uem('/vol/work1/dyab/training_set/train_video_list','plumcot.trn.uem')
 #create_uem('/vol/work1/dyab/development_set/dev0_video_list','plumcot.dev.uem')
 #create_uem('/vol/work1/dyab/test_set/test_video_list','plumcot.tst.uem')
+
+generate_audio_features(test_dir,output_dir_test,y_labels_dir_test)

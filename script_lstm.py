@@ -18,7 +18,11 @@ import utils
 
 NUMPY_PATH_AUDIO = "/vol/work1/dyab/training_set/numpy_arrays_local_audio"
 NUMPY_PATH = '/vol/work1/dyab/training_set/numpy_arrays_local_landmarks'
+
+DEV_NUMPY_PATH_AUDIO = "/vol/work1/dyab/development_set/numpy_arrays_cluster_old_audio"
 DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks'
+
+TEST_NUMPY_PATH_AUDIO = "/vol/work1/dyab/test_set/numpy_arrays_audio"
 TEST_NUMPY_PATH='/vol/work1/dyab/test_set/numpy_arrays_landmarks'
 BATCH_SIZE = 32
 
@@ -65,16 +69,15 @@ Y_PATHS = [f for f in Y_PATHS if "BFMTV_BFMStory_2012-07-16_175800" not in f]
 Y_PATHS = [f for f in Y_PATHS if "LCP_EntreLesLignes_2012-10-16_032500" not in f]
 Y_PATHS = [f for f in Y_PATHS if "LCP_LCPInfo13h30_2012-04-04_132700" not in f]
 
-
-#x_names_audio = list(map(lambda x: x.split("/")[-1].split(".")[0], X_PATHS_AUDIO))
-#x_names = list(map(lambda x: x.split("/")[-1].split(".")[0], X_PATHS))
-#intersection = [ item for item in x_names_audio if item in x_names]
-#print(intersection)
-#exit(0)
-
+X_PATHS_DEV_AUDIO = sorted(glob(DEV_NUMPY_PATH_AUDIO + '/*.Xa.npy'))
 X_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.Y.npy'))
 
+#make sure audio and video files are the same
+X_PATHS_DEV = [f for f in X_PATHS_DEV if "LCP_EntreLesLignes_2011-04-05_025900" not in f]
+Y_PATHS_DEV = [f for f in Y_PATHS_DEV if "LCP_EntreLesLignes_2011-04-05_025900" not in f]
+
+X_PATHS_TEST_AUDIO = sorted(glob(TEST_NUMPY_PATH_AUDIO + '/*.Xa.npy'))
 X_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.XLandmarks.npy'))
 Y_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.Y.npy'))
 
@@ -87,26 +90,31 @@ if REMOVE_LCP_TOPQUESTIONS:
     X_PATHS_TEST = [f for f in X_PATHS_TEST if "LCP_TopQuestions" not in f]
     Y_PATHS_TEST = [f for f in Y_PATHS_TEST if "LCP_TopQuestions" not in f]
 
-for xp, xa in zip(X_PATHS, X_PATHS_AUDIO):
-    if xp.split("/")[-1][:-15] != xa.split("/")[-1][:-7]:
-        print(xp, xa)
-        sys.exit()
 
-# make sure they are loaded in the same order (X must match y)
-for xp, yp in zip(X_PATHS, Y_PATHS):
-    if xp[:-15] != yp[:-6]:
-        print(xp, yp)
-        sys.exit()
+def check_order_x_y(X,Y):
 
-for xp, yp in zip(X_PATHS_DEV, Y_PATHS_DEV):
-    if xp[:-15] != yp[:-6]:
-        print(xp, yp)
-        sys.exit()
+    # make sure they are loaded in the same order (X must match y)
+    for xp, yp in zip(X, Y):
+        if xp[:-15] != yp[:-6]:
+            print(xp, yp)
+            sys.exit()
 
-for xp, yp in zip(X_PATHS_TEST, Y_PATHS_TEST):
-    if xp[:-15] != yp[:-6]:
-        print(xp, yp)
-        sys.exit()
+def check_order_landmarks_audio(X,X_AUDIO):
+
+    # make sure they are loaded in the same order (X landmarks must match X audio)
+    for xp, xa in zip(X, X_AUDIO):
+        if xp.split("/")[-1][:-15] != xa.split("/")[-1][:-7]:
+            print(xp, xa)
+            sys.exit()
+
+
+check_order_x_y(X_PATHS, Y_PATHS)
+check_order_x_y(X_PATHS_DEV, Y_PATHS_DEV)
+check_order_x_y(X_PATHS_TEST, Y_PATHS_TEST)
+
+check_order_landmarks_audio(X_PATHS, X_PATHS_AUDIO)
+check_order_landmarks_audio(X_PATHS_DEV, X_PATHS_DEV_AUDIO)
+check_order_landmarks_audio(X_PATHS_TEST, X_PATHS_TEST_AUDIO)
 
 # total number of tracks
 N_TRACKS = len(X_PATHS)
@@ -205,10 +213,10 @@ def train(x_paths, y_paths, weights_dir,x_paths_audio=None):
     model.fit_generator(batch_generator, steps_per_epoch, epochs=1000,
                         verbose=1, callbacks=callbacks, workers=1)
 
-def validate(x_paths, y_paths, weights_dir):
+def validate(x_paths, y_paths, weights_dir,x_paths_audio=None):
 
     epoch = 0
-    f = open(WEIGHTS_DIR+"/list_test",'w')
+    f = open(WEIGHTS_DIR+"/list_dev",'w')
     while True:
 
         # sleep until next epoch is finished
@@ -218,7 +226,7 @@ def validate(x_paths, y_paths, weights_dir):
             continue
         model = load_model(model_h5)
 
-        generator = get_generator(x_paths, y_paths, forever=False)
+        generator = get_generator(x_paths, y_paths, forever=False,x_paths_audio=x_paths_audio)
         if CATEGORICAL:
             signature = ({'type': 'ndarray'}, {'type': 'ndarray'})
         else:
@@ -258,29 +266,34 @@ TRAINING_X_PATHS_AUDIO = np.take(X_PATHS_AUDIO,index_list)
 #take the 10th out of each 10 sequences
 VALIDATION_X_PATHS = X_PATHS[9::STEP]
 VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
+VALIDATION_X_PATHS_AUDIO = X_PATHS_AUDIO[9::STEP]
 
 print(N_TRACKS)
 if USE_AUDIO:
-    train(TRAINING_X_PATHS,
-          TRAINING_Y_PATHS,
-          WEIGHTS_DIR,
-          TRAINING_X_PATHS_AUDIO)
+    #train(TRAINING_X_PATHS,
+    #      TRAINING_Y_PATHS,
+    #      WEIGHTS_DIR,
+    #      TRAINING_X_PATHS_AUDIO)
 
-#validate(TRAINING_X_PATHS,
-#         TRAINING_Y_PATHS,
-#         WEIGHTS_DIR)
+    #validate(TRAINING_X_PATHS,
+    #         TRAINING_Y_PATHS,
+    #         WEIGHTS_DIR,
+    #         TRAINING_X_PATHS_AUDIO)
 
-#validate(VALIDATION_X_PATHS,
-#         VALIDATION_Y_PATHS,
-#         WEIGHTS_DIR)
+    #validate(VALIDATION_X_PATHS,
+    #         VALIDATION_Y_PATHS,
+    #         WEIGHTS_DIR,
+    #         VALIDATION_X_PATHS_AUDIO)
 
-#validate(X_PATHS_DEV,
-#         Y_PATHS_DEV,
-#         WEIGHTS_DIR)
+    validate(X_PATHS_DEV,
+             Y_PATHS_DEV,
+             WEIGHTS_DIR,
+             X_PATHS_DEV_AUDIO)
 
-#validate(X_PATHS_TEST,
-#        Y_PATHS_TEST,
-#         WEIGHTS_DIR)
+    #validate(X_PATHS_TEST,
+    #        Y_PATHS_TEST,
+    #        WEIGHTS_DIR,
+    #         X_PATHS_TEST_AUDIO)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

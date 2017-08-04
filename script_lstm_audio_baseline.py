@@ -16,8 +16,8 @@ import time
 import sys
 
 NUMPY_PATH = "/vol/work1/dyab/training_set/numpy_arrays_local_audio"
-DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks_audio'
-TEST_NUMPY_PATH='/vol/work1/dyab/test_set/numpy_arrays_landmarks_audio'
+DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_audio'
+TEST_NUMPY_PATH='/vol/work1/dyab/test_set/numpy_arrays_audio'
 BATCH_SIZE = 32
 
 CATEGORICAL=False
@@ -38,12 +38,16 @@ Y_PATHS = [f for f in Y_PATHS if "BFMTV_BFMStory_2012-07-16_175800" not in f]
 Y_PATHS = [f for f in Y_PATHS if "LCP_EntreLesLignes_2012-10-16_032500" not in f]
 Y_PATHS = [f for f in Y_PATHS if "LCP_LCPInfo13h30_2012-04-04_132700" not in f]
 
-#Add dev and test files to remove
 X_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.Xa.npy'))
 Y_PATHS_DEV = sorted(glob(DEV_NUMPY_PATH + '/*.Y.npy'))
 
+#make sure audio and video files are the same
+X_PATHS_DEV = [f for f in X_PATHS_DEV if "LCP_EntreLesLignes_2011-04-05_025900" not in f]
+Y_PATHS_DEV = [f for f in Y_PATHS_DEV if "LCP_EntreLesLignes_2011-04-05_025900" not in f]
+
 X_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.Xa.npy'))
 Y_PATHS_TEST = sorted(glob(TEST_NUMPY_PATH + '/*.Y.npy'))
+
 
 # If you want to remove LCP videos.
 if REMOVE_LCP_TOPQUESTIONS:
@@ -84,7 +88,7 @@ def statistics(y_paths):
 def get_generator(x_paths, y_paths, forever=True):
     first_loop = True
     while forever or first_loop:
-        for x_path, y_path,x_path_audio in zip(x_paths, y_paths):
+        for x_path, y_path in zip(x_paths, y_paths):
 
             Xa = np.load(x_path)
 
@@ -94,11 +98,17 @@ def get_generator(x_paths, y_paths, forever=True):
                 Y = np.load(y_path)
                 Y=Y.reshape((len(Y),1))
 
-            n_samples = Xa.shape[0]
+            n_samples = min(Xa.shape[0],Y.shape[0])
+
+            #print(Xa.shape)
+            #print(Y.shape)
 
             for i in range(n_samples - 25):
                 y = Y[i:i+25]
                 x = Xa[i:i+25]
+
+                #print(x.shape)
+                #print(y.shape)
 
                 yield x, y
         first_loop = False
@@ -197,9 +207,9 @@ VALIDATION_X_PATHS = X_PATHS[9::STEP]
 VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
 
 print(N_TRACKS)
-train(TRAINING_X_PATHS,
-      TRAINING_Y_PATHS,
-      WEIGHTS_DIR)
+#train(TRAINING_X_PATHS,
+#      TRAINING_Y_PATHS,
+#      WEIGHTS_DIR)
 
 #validate(TRAINING_X_PATHS,
 #         TRAINING_Y_PATHS,
@@ -209,13 +219,13 @@ train(TRAINING_X_PATHS,
 #         VALIDATION_Y_PATHS,
 #         WEIGHTS_DIR)
 
-#validate(X_PATHS_DEV,
-#         Y_PATHS_DEV,
-#         WEIGHTS_DIR)
+validate(X_PATHS_DEV,
+         Y_PATHS_DEV,
+        WEIGHTS_DIR)
 
 #validate(X_PATHS_TEST,
 #        Y_PATHS_TEST,
-#         WEIGHTS_DIR)
+#        WEIGHTS_DIR)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

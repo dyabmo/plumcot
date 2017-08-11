@@ -9,6 +9,9 @@ import os.path
 import time
 import sys
 from script_lstm import get_generator
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import average_precision_score
+import matplotlib.pyplot as plt
 
 BATCH_SIZE = 32
 REMOVE_LCP_TOPQUESTIONS=True
@@ -54,7 +57,7 @@ best_model = np.argmax(dev_models)
 print(best_model)
 model_h5 = WEIGHTS_DIR + '/{epoch:04d}.h5'.format(epoch=best_model)
 model = load_model(model_h5)
-f = open(WEIGHTS_DIR+"/scores",'w')
+f = open(WEIGHTS_DIR+"/scores4",'w')
 f.write("Model: {:04d}\n".format(best_model))
 f.flush()
 
@@ -86,6 +89,30 @@ def validate_ev(x_paths, y_paths, weights_dir,x_paths_audio):
 
     return y_true,y_pred
 
+def compute_precision_recall():
+
+    y_true_curve, y_pred_curve = validate_ev(X_PATHS_DEV,Y_PATHS_DEV,WEIGHTS_DIR,X_PATHS_DEV_AUDIO)
+
+
+    precision, recall, thresholds = precision_recall_curve(y_true_curve, y_pred_curve )
+
+    average_precision = average_precision_score(y_true_curve, y_pred_curve, average="micro")
+
+    # Plot Precision-Recall curve
+    plt.clf()
+    plt.plot(recall, precision, color='navy', label='Precision-Recall curve')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title('Precision-Recall: AUC={0:0.2f}'.format(average_precision))
+    plt.legend(loc="lower left")
+    print(thresholds)
+    plt.savefig(WEIGHTS_DIR+"/precision_recall_curve.png")
+
+
+compute_precision_recall()
+
 #Beta represents the ratio between precision and recall weights in F-score calculation
 for beta in (1,0.1,10):
 
@@ -95,9 +122,9 @@ for beta in (1,0.1,10):
 
     max_fbeta_score=0
     argmax_theta=0
-    for theta_index in range(1,10,1):
+    for theta_index in range(1,40,1):
 
-        theta = theta_index/10.
+        theta = theta_index/40.
         print(theta)
 
         #print(y_pred)
@@ -123,5 +150,5 @@ for beta in (1,0.1,10):
     y_pred_test_cutoff = y_pred_test > argmax_theta
     test_score = fbeta_score(y_true_test, y_pred_test_cutoff, beta=beta)
 
-    f.write("Beta: {}. Max_theta: {}. Development set F-score: {}.Test Set F-score: {}\n".format(beta,argmax_theta,max_fbeta_score,test_score))
+    f.write("Beta: {}   Max_theta: {}   Development set F-score: {}   Test Set F-score: {}\n".format(beta,argmax_theta,max_fbeta_score,test_score))
     f.flush()

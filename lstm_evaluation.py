@@ -49,7 +49,7 @@ if REMOVE_LCP_TOPQUESTIONS:
 
 #Select best model/epoch on dev set according to AUC curve
 
-with open(WEIGHTS_DIR+"/list_dev", "r") as f:
+with open(WEIGHTS_DIR+"/list_dev_prec_rec_auc", "r") as f:
     dev_models = f.readline().split(',')
 
 #print(dev_models)
@@ -57,7 +57,7 @@ best_model = np.argmax(dev_models)
 print(best_model)
 model_h5 = WEIGHTS_DIR + '/{epoch:04d}.h5'.format(epoch=best_model)
 model = load_model(model_h5)
-f = open(WEIGHTS_DIR+"/scores4",'w')
+f = open(WEIGHTS_DIR+"/scores_prec_rec",'w')
 f.write("Model: {:04d}\n".format(best_model))
 f.flush()
 
@@ -108,7 +108,7 @@ def compute_precision_recall():
     plt.title('Precision-Recall: AUC={0:0.2f}'.format(average_precision))
     plt.legend(loc="lower left")
     print(thresholds)
-    plt.savefig(WEIGHTS_DIR+"/precision_recall_curve.png")
+    plt.savefig(WEIGHTS_DIR+"/precision_recall_curve2.png")
 
 
 compute_precision_recall()

@@ -8,7 +8,7 @@ from pyannote.audio.labeling.models import StackedLSTM
 from keras.callbacks import ModelCheckpoint
 from tqdm import tqdm
 from keras.models import load_model
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 import numpy as np
 from glob import glob
 import os.path
@@ -156,7 +156,7 @@ def train(x_paths, y_paths, weights_dir):
 def validate(x_paths, y_paths, weights_dir):
 
     epoch = 0
-    f = open(WEIGHTS_DIR+"/list_dev",'w')
+    f = open(WEIGHTS_DIR+"/list_test_prec_rec_auc",'w')
     while True:
 
         # sleep until next epoch is finished
@@ -183,7 +183,9 @@ def validate(x_paths, y_paths, weights_dir):
         y_true = np.vstack(Y_true)
         y_pred = np.vstack(Y_pred)
 
-        auc = roc_auc_score(y_true, y_pred, average='macro', sample_weight=None)
+       #auc = roc_auc_score(y_true, y_pred, average='macro', sample_weight=None)
+        auc = average_precision_score(y_true, y_pred, average='macro', sample_weight=None)
+
         print('#{epoch:04d} {auc:.4f}%'.format(epoch=epoch+1, auc=100*auc))
         f.write("{},".format(auc))
         f.flush()
@@ -213,19 +215,19 @@ print(N_TRACKS)
 
 #validate(TRAINING_X_PATHS,
 #         TRAINING_Y_PATHS,
-#         WEIGHTS_DIR)
+#        WEIGHTS_DIR)
 
 #validate(VALIDATION_X_PATHS,
 #         VALIDATION_Y_PATHS,
 #         WEIGHTS_DIR)
 
-validate(X_PATHS_DEV,
-         Y_PATHS_DEV,
-        WEIGHTS_DIR)
-
-#validate(X_PATHS_TEST,
-#        Y_PATHS_TEST,
+#validate(X_PATHS_DEV,
+#         Y_PATHS_DEV,
 #        WEIGHTS_DIR)
+
+validate(X_PATHS_TEST,
+        Y_PATHS_TEST,
+        WEIGHTS_DIR)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

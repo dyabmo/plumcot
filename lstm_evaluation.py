@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 
 BATCH_SIZE = 32
 REMOVE_LCP_TOPQUESTIONS=True
-USE_FACE=True
-WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio'
+USE_FACE=False
+WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/mouth_derivatives_audio'
 
 DEV_NUMPY_PATH_AUDIO = "/vol/work1/dyab/development_set/numpy_arrays_cluster_old_audio"
 DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks'
@@ -57,7 +57,18 @@ best_model = np.argmax(dev_models)
 print(best_model)
 model_h5 = WEIGHTS_DIR + '/{epoch:04d}.h5'.format(epoch=best_model)
 model = load_model(model_h5)
-f = open(WEIGHTS_DIR+"/scores_prec_rec",'w')
+
+#Select the best on test set
+with open(WEIGHTS_DIR+"/list_test_prec_rec_auc", "r") as f:
+    test_models = f.readline().split(',')
+
+#print(dev_models)
+best_model_test = np.argmax(test_models)
+print(best_model_test)
+model_h5_test = WEIGHTS_DIR + '/{epoch:04d}.h5'.format(epoch=best_model_test)
+model_test = load_model(model_h5_test)
+
+f = open(WEIGHTS_DIR+"/modified_scores_prec_rec",'w')
 f.write("Model: {:04d}\n".format(best_model))
 f.flush()
 
@@ -70,7 +81,7 @@ f.flush()
 score_matrix = np.zeros((3,3))
 i=0
 
-def validate_ev(x_paths, y_paths, weights_dir,x_paths_audio):
+def validate_ev(x_paths, y_paths, input_model,x_paths_audio):
 
     generator = get_generator(x_paths, y_paths, forever=False,x_paths_audio=x_paths_audio)
     signature = ({'type': 'ndarray'}, {'type': 'scalar'})
@@ -80,7 +91,7 @@ def validate_ev(x_paths, y_paths, weights_dir,x_paths_audio):
     for X, y in batch_generator:
         # Y_pred.append(model.predict(X)[:, :, 1].reshape((-1, 1)))
         # Y_true.append(y[:, :, 1].reshape((-1, 1)))
-        Y_pred.append(model.predict(X).reshape((-1, 1)))
+        Y_pred.append(input_model.predict(X).reshape((-1, 1)))
         Y_true.append(y.reshape((-1, 1)))
 
     y_true = np.vstack(Y_true)
@@ -89,12 +100,35 @@ def validate_ev(x_paths, y_paths, weights_dir,x_paths_audio):
 
     return y_true,y_pred
 
-def compute_precision_recall():
+def compute_precision_recall(input_model):
 
-    y_true_curve, y_pred_curve = validate_ev(X_PATHS_DEV,Y_PATHS_DEV,WEIGHTS_DIR,X_PATHS_DEV_AUDIO)
+    y_true_curve, y_pred_curve = validate_ev(X_PATHS_DEV,Y_PATHS_DEV,input_model,X_PATHS_DEV_AUDIO)
 
+    y_true_curve_test, y_pred_curve_test = validate_ev(X_PATHS_TEST,Y_PATHS_TEST,input_model,X_PATHS_TEST_AUDIO)
 
     precision, recall, thresholds = precision_recall_curve(y_true_curve, y_pred_curve )
+
+    precision_test, recall_test, thresholds_test = precision_recall_curve(y_true_curve_test, y_pred_curve_test)
+
+    f = open(WEIGHTS_DIR + "/precision_dev", 'w')
+    for i in range(0,precision.shape[0]):
+        f.write("{},".format(precision[i]))
+        f.flush()
+
+    f2 = open(WEIGHTS_DIR + "/recall_dev", 'w')
+    for i in range(0,recall.shape[0]):
+        f2.write("{},".format(recall[i]))
+        f2.flush()
+
+    f3 = open(WEIGHTS_DIR + "/precision_test", 'w')
+    for i in range(0, precision_test.shape[0]):
+        f3.write("{},".format(precision_test[i]))
+        f3.flush()
+
+    f4 = open(WEIGHTS_DIR + "/recall_test", 'w')
+    for i in range(0, recall_test.shape[0]):
+        f4.write("{},".format(recall_test[i]))
+        f4.flush()
 
     average_precision = average_precision_score(y_true_curve, y_pred_curve, average="micro")
 
@@ -107,48 +141,151 @@ def compute_precision_recall():
     plt.xlim([0.0, 1.0])
     plt.title('Precision-Recall: AUC={0:0.2f}'.format(average_precision))
     plt.legend(loc="lower left")
-    print(thresholds)
-    plt.savefig(WEIGHTS_DIR+"/precision_recall_curve2.png")
+    plt.savefig(WEIGHTS_DIR+"/precision_recall_curve_dev.png")
+
+    average_precision_test = average_precision_score(y_true_curve_test, y_pred_curve_test, average="micro")
+
+    # Plot Precision-Recall curve
+    plt.clf()
+    plt.plot(recall_test, precision_test, color='navy', label='Precision-Recall curve')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.0, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title('Precision-Recall: AUC={0:0.2f}'.format(average_precision_test))
+    plt.legend(loc="lower left")
+    plt.savefig(WEIGHTS_DIR + "/precision_recall_curve_test.png")
+
+def compute_precision_recall_agg():
+
+    precision1 = np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/precision',delimiter=",",skip_header=0)
+    recall1 =  np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/recall',delimiter=",",skip_header=0)
+
+    precision2 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/derivatives/precision',
+        delimiter=",", skip_header=0)
+    recall2 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/derivatives/recall',
+        delimiter=",", skip_header=0)
+
+    precision3 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/precision',
+        delimiter=",", skip_header=0)
+    recall3 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/recall',
+        delimiter=",", skip_header=0)
+
+    precision4 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/precision',
+        delimiter=",", skip_header=0)
+    recall4 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/recall',
+        delimiter=",", skip_header=0)
+
+    # Plot Precision-Recall curve
+    plt.clf()
+    plt.plot(recall1, precision1, color='yellow', label='Audio only')
+    plt.plot(recall2, precision2, color='red', label='Mouth landmarks')
+    plt.plot(recall3, precision3, color='green', label='Face landmarks')
+    plt.plot(recall4, precision4, color='blue', label='Face landmarks + Audio')
 
 
-compute_precision_recall()
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.5, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc="lower left")
+    plt.savefig("/vol/work1/dyab/training_models/bredin/precision_recall_curve2.pdf")
 
-#Beta represents the ratio between precision and recall weights in F-score calculation
-for beta in (1,0.1,10):
+def compute_baseline():
 
-    print(beta)
-    #Apply dev set
     y_true, y_pred = validate_ev(X_PATHS_DEV,Y_PATHS_DEV,WEIGHTS_DIR,X_PATHS_DEV_AUDIO)
 
-    max_fbeta_score=0
-    argmax_theta=0
-    for theta_index in range(1,40,1):
+    y_pred_cutoff = y_pred >= 0
 
-        theta = theta_index/40.
-        print(theta)
+    dev_score = fbeta_score(y_true, y_pred_cutoff, beta=1)
+    print(dev_score)
 
-        #print(y_pred)
+    y_true_test, y_pred_test = validate_ev(X_PATHS_TEST, Y_PATHS_TEST, WEIGHTS_DIR, X_PATHS_TEST_AUDIO)
 
-        y_pred_cutoff = y_pred >= theta
-        score = fbeta_score(y_true, y_pred_cutoff, beta=beta)
-        print(score)
-        if(score > max_fbeta_score):
-            max_fbeta_score = score
-            argmax_theta = theta
+    y_pred_test_cutoff = y_pred_test >= 0
+    test_score = fbeta_score(y_true_test, y_pred_test_cutoff, beta=1)
+    print(test_score)
+
+    exit()
+
+#compute_precision_recall_agg()
+#exit()
+
+compute_precision_recall(model)
+
+#Beta represents the ratio between precision and recall weights in F-score calculation
+beta = 1
+
+#Apply dev set
+y_true, y_pred = validate_ev(X_PATHS_DEV,Y_PATHS_DEV,model,X_PATHS_DEV_AUDIO)
+theta_array_dev=list()
+score_array_dev = list()
+
+max_fbeta_score=0
+argmax_theta=0
+for theta_index in range(1,40,1):
+
+    theta = theta_index/40.
+
+    y_pred_cutoff = y_pred >= theta
+    score = fbeta_score(y_true, y_pred_cutoff, beta=beta)
+    if(score > max_fbeta_score):
+        max_fbeta_score = score
+        argmax_theta = theta
+
+    theta_array_dev.append(theta)
+    score_array_dev.append(score)
+# Apply the 3 thetas of that selected model on test set
+# Compare 3 f-scores of test set with dev set FOR EACH EXPERIMENT
+# If the scores are close, then generalization occurred.
+y_true_test, y_pred_test = validate_ev(X_PATHS_TEST,Y_PATHS_TEST,model,X_PATHS_TEST_AUDIO)
+
+y_pred_test_cutoff = y_pred_test > argmax_theta
+test_score = fbeta_score(y_true_test, y_pred_test_cutoff, beta=beta)
+
+#change model to test
+y_true_test, y_pred_test_max = validate_ev(X_PATHS_TEST,Y_PATHS_TEST,model_test,X_PATHS_TEST_AUDIO)
+
+max_fbeta_score_test=0
+argmax_theta_test=0
+
+theta_array_test=list()
+score_array_test = list()
+#Do same on test as dev
+for theta_index in range(1,40,1):
+
+    theta = theta_index/40.
+
+    y_pred_test_cutoff_max = y_pred_test_max >= theta
+    score = fbeta_score(y_true_test, y_pred_test_cutoff_max, beta=beta)
+    if(score > max_fbeta_score_test):
+        max_fbeta_score_test = score
+        argmax_theta_test = theta
+
+    theta_array_test.append(theta)
+    score_array_test.append(score)
+
+f.write("Max_theta_dev: {}   Development set F-score: {}   Test Set F-score: {}  Max_theta_test: {}  Max Test Set F-score: {} Difference: {}\n".format(argmax_theta,max_fbeta_score,test_score,argmax_theta_test,max_fbeta_score_test, abs(test_score - max_fbeta_score_test) ))
+f.flush()
+
+plt.clf()
+plt.plot(theta_array_dev, score_array_dev, color='blue', label='Development set')
+plt.plot(theta_array_test, score_array_test, color='red', label='Test set')
+plt.plot([0,1],[max_fbeta_score,max_fbeta_score],'b--',label="Max F1-score for Dev. set")
+plt.plot([0,1],[max_fbeta_score_test,max_fbeta_score_test],'r--',label="Max F1-score for Test set")
 
 
-    score_matrix[i][0] = beta
-    score_matrix[i][1] = argmax_theta
-    score_matrix[i][2] = max_fbeta_score
-    i=i+1
-
-    # Apply the 3 thetas of that selected model on test set
-    # Compare 3 f-scores of test set with dev set FOR EACH EXPERIMENT
-    # If the scores are close, then generalization occurred.
-    y_true_test, y_pred_test = validate_ev(X_PATHS_TEST,Y_PATHS_TEST,WEIGHTS_DIR,X_PATHS_TEST_AUDIO)
-
-    y_pred_test_cutoff = y_pred_test > argmax_theta
-    test_score = fbeta_score(y_true_test, y_pred_test_cutoff, beta=beta)
-
-    f.write("Beta: {}   Max_theta: {}   Development set F-score: {}   Test Set F-score: {}\n".format(beta,argmax_theta,max_fbeta_score,test_score))
-    f.flush()
+plt.xlabel('Theta')
+plt.ylabel('F1-score')
+plt.ylim([0.5, 1.05])
+plt.xlim([0.0, 1.0])
+#plt.title('Precision-Recall Curve')
+plt.legend(loc="lower left")
+plt.savefig(WEIGHTS_DIR + "/F1-score-theta.pdf")

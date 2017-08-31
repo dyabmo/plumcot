@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 
 BATCH_SIZE = 32
 REMOVE_LCP_TOPQUESTIONS=True
-USE_FACE=False
-WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/mouth_derivatives_audio'
+USE_FACE=True
+WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio'
 
 DEV_NUMPY_PATH_AUDIO = "/vol/work1/dyab/development_set/numpy_arrays_cluster_old_audio"
 DEV_NUMPY_PATH='/vol/work1/dyab/development_set/numpy_arrays_cluster_old_landmarks'
@@ -46,6 +46,83 @@ if REMOVE_LCP_TOPQUESTIONS:
     Y_PATHS_DEV = [f for f in Y_PATHS_DEV if "LCP_TopQuestions" not in f ]
     X_PATHS_TEST = [f for f in X_PATHS_TEST if "LCP_TopQuestions" not in f]
     Y_PATHS_TEST = [f for f in Y_PATHS_TEST if "LCP_TopQuestions" not in f]
+
+
+def compute_precision_recall_agg(type):
+
+    precision_fname = "precision_"+type
+    recall_fname = "recall_"+type
+
+
+    precision1 = np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/'+precision_fname,delimiter=",",skip_header=0)
+    recall1 =  np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/'+recall_fname,delimiter=",",skip_header=0)
+
+    precision2 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/derivatives/'+precision_fname,
+        delimiter=",", skip_header=0)
+    recall2 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/derivatives/'+recall_fname,
+        delimiter=",", skip_header=0)
+
+    precision3 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/'+precision_fname,
+        delimiter=",", skip_header=0)
+    recall3 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/'+recall_fname,
+        delimiter=",", skip_header=0)
+
+    precision4 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/'+precision_fname,
+        delimiter=",", skip_header=0)
+    recall4 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/'+recall_fname,
+        delimiter=",", skip_header=0)
+
+    precision5 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/mouth_derivatives_audio/' + precision_fname,
+        delimiter=",", skip_header=0)
+    recall5 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/mouth_derivatives_audio/' + recall_fname,
+        delimiter=",", skip_header=0)
+
+    precision6 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/face_derivatives_audio/' + precision_fname,
+        delimiter=",", skip_header=0)
+    recall6 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/face_derivatives_audio/' + recall_fname,
+        delimiter=",", skip_header=0)
+
+    precision7 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/face_derivatives/' + precision_fname,
+        delimiter=",", skip_header=0)
+    recall7 = np.genfromtxt(
+        '/vol/work1/dyab/training_models/bredin/face_derivatives/' + recall_fname,
+        delimiter=",", skip_header=0)
+
+
+
+    # Plot Precision-Recall curve
+    plt.clf()
+    plt.plot(recall1[:-100], precision1[:-100], color='yellow', label='Audio only')
+    #plt.plot(recall3[:-100], precision3[:-100], color='green', label='Face')
+    plt.plot(recall2[:-100], precision2[:-100], color='red', label='Mouth + Derivatives')
+    #plt.plot(recall7, precision7, color='cyan', label='Face + Derivatives')
+    #plt.plot(recall4[:-100], precision4[:-100], color='blue', label='Face + Audio')
+    #plt.plot(recall5, precision5, color='magenta', label='Mouth + Derivatives + Audio')
+    #plt.plot(recall6, precision6, color='violet', label='Face + Derivatives + Audio')
+
+
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.ylim([0.5, 1.05])
+    plt.xlim([0.0, 1.0])
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc="lower left")
+    plt.savefig("/vol/work1/dyab/training_models/bredin/precision_recall_curve"+type+"_audio_mouth_derivatives.pdf")
+
+compute_precision_recall_agg("dev")
+compute_precision_recall_agg("test")
+exit()
 
 #Select best model/epoch on dev set according to AUC curve
 
@@ -134,7 +211,7 @@ def compute_precision_recall(input_model):
 
     # Plot Precision-Recall curve
     plt.clf()
-    plt.plot(recall, precision, color='navy', label='Precision-Recall curve')
+    plt.plot(recall[:-1], precision[:-1], label='Precision-Recall curve')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.05])
@@ -147,7 +224,7 @@ def compute_precision_recall(input_model):
 
     # Plot Precision-Recall curve
     plt.clf()
-    plt.plot(recall_test, precision_test, color='navy', label='Precision-Recall curve')
+    plt.plot(recall_test[:-100], precision_test[:-100], label='Precision-Recall curve')
     plt.xlabel('Recall')
     plt.ylabel('Precision')
     plt.ylim([0.0, 1.05])
@@ -156,47 +233,7 @@ def compute_precision_recall(input_model):
     plt.legend(loc="lower left")
     plt.savefig(WEIGHTS_DIR + "/precision_recall_curve_test.png")
 
-def compute_precision_recall_agg():
 
-    precision1 = np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/precision',delimiter=",",skip_header=0)
-    recall1 =  np.genfromtxt('/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_baseline_audio/recall',delimiter=",",skip_header=0)
-
-    precision2 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/derivatives/precision',
-        delimiter=",", skip_header=0)
-    recall2 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/derivatives/recall',
-        delimiter=",", skip_header=0)
-
-    precision3 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/precision',
-        delimiter=",", skip_header=0)
-    recall3 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_NoDerivatives/recall',
-        delimiter=",", skip_header=0)
-
-    precision4 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/precision',
-        delimiter=",", skip_header=0)
-    recall4 = np.genfromtxt(
-        '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio/recall',
-        delimiter=",", skip_header=0)
-
-    # Plot Precision-Recall curve
-    plt.clf()
-    plt.plot(recall1, precision1, color='yellow', label='Audio only')
-    plt.plot(recall2, precision2, color='red', label='Mouth landmarks')
-    plt.plot(recall3, precision3, color='green', label='Face landmarks')
-    plt.plot(recall4, precision4, color='blue', label='Face landmarks + Audio')
-
-
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.ylim([0.5, 1.05])
-    plt.xlim([0.0, 1.0])
-    plt.title('Precision-Recall Curve')
-    plt.legend(loc="lower left")
-    plt.savefig("/vol/work1/dyab/training_models/bredin/precision_recall_curve2.pdf")
 
 def compute_baseline():
 
@@ -215,11 +252,10 @@ def compute_baseline():
 
     exit()
 
-#compute_precision_recall_agg()
-#exit()
+
 
 compute_precision_recall(model)
-
+exit()
 #Beta represents the ratio between precision and recall weights in F-score calculation
 beta = 1
 
@@ -280,7 +316,6 @@ plt.plot(theta_array_dev, score_array_dev, color='blue', label='Development set'
 plt.plot(theta_array_test, score_array_test, color='red', label='Test set')
 plt.plot([0,1],[max_fbeta_score,max_fbeta_score],'b--',label="Max F1-score for Dev. set")
 plt.plot([0,1],[max_fbeta_score_test,max_fbeta_score_test],'r--',label="Max F1-score for Test set")
-
 
 plt.xlabel('Theta')
 plt.ylabel('F1-score')

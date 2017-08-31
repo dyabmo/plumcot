@@ -9,11 +9,20 @@ LANDMARKS_START_INDEX = 2
 MOUTH_START_INDEX = 48
 LEFT_EYE_INDEX=36
 RIGHT_EYE_INDEX=45
-NUMBER_OF_MOUTH_POINTS = 20
-MOUTH_START_INDEX_RAW = 98
+#NUMBER_OF_MOUTH_POINTS = 20
+#MOUTH_START_INDEX_RAW = 98
 FEATURES_NUM=40
 X=0
 Y=1
+GENERATE_WHOLE_FACE = True
+
+if GENERATE_WHOLE_FACE:
+    #use all points
+    FEATURES_NUM = 136
+
+    #start from zero to include all points not just mouth
+    MOUTH_START_INDEX = 0
+
 
 def preprocess_arguments():
 
@@ -91,36 +100,27 @@ def preprocess(face_landmarks_name,y_labels_dir,output_directory):
             Xv = np.zeros((facetrack_length, FEATURES_NUM), dtype=np.float32)
             Yv = np.load(y_labels_dir + video_name + "." + str(y_numpy_array) + ".Y.npy")
 
+            ####################################################
+            # FEATURE normalization ( Now it's done in the LSTM generator )
+            #####################################################
             #Mouth points start at position 48 relative to facelandmark points, also account for "time" and facetrack ID"
-            mouth_points = facetrack_data[:,MOUTH_START_INDEX_RAW:]
+            #mouth_points = facetrack_data[:,MOUTH_START_INDEX_RAW:]
             #perform featurewise mean and std
-            mean = np.mean( mouth_points,axis=0 )
-            print(mean.shape)
-            #shape of mean should be:  40)
-
-            mean_expanded = np.tile(mean,(facetrack_length,1))
-            print(mean_expanded.shape)
-
-            std = np.std(mouth_points,axis=0 )
-            print(std.shape)
-            std_expanded = np.tile(std,(facetrack_length,1))
-            print(std_expanded.shape)
-
-            mouth_points_normalized = (mouth_points- mean_expanded ) / std_expanded
-            print(mouth_points_normalized.shape)
-            Xv = mouth_points_normalized
+            #mean = np.mean( mouth_points,axis=0 )
+            #std = np.std(mouth_points,axis=0 )
+            #Xv = (mouth_points- mean ) / std
 
             ##########################################################
-            #Old way of normalization
+            # Normalizing face size and face location
             ##########################################################
-            #for index in range(facetrack_length):
-            #for item in facetrack_data:
-                #get the coordinates, ignore the first two values used for time and facetrack number
-                #raw_coordinates = facetrack_data[index,LANDMARKS_START_INDEX:]
+            for index in range(facetrack_length):
+                for item in facetrack_data:
+                    #get the coordinates, ignore the first two values used for time and facetrack number
+                    raw_coordinates = facetrack_data[index,LANDMARKS_START_INDEX:]
 
-                #coordinates = compute_coordinates(raw_coordinates)
-                #print(coordinates)
-                #Xv[index,:] = coordinates
+                    coordinates = compute_coordinates(raw_coordinates)
+                    #print(coordinates)
+                    Xv[index,:] = coordinates
 
             np.save(output_directory + video_name + '.' + str(y_numpy_array) + '.XLandmarks.npy', Xv)
             np.save(output_directory + video_name + '.' + str(y_numpy_array) + '.Y.npy',Yv )

@@ -137,7 +137,7 @@ def compute_samples_majority_class(dir, type='validation', start=0, end=None):
 
     _, y=load_from_hdf5(dir, type, start=start, end=end, labels_only=True)
 
-    positive_label_percentage =  (np.sum(y) / len(y)) * 100
+    positive_label_percentage = (np.sum(y) / len(y)) * 100
 
     return positive_label_percentage
 
@@ -356,7 +356,7 @@ def seq2eq(seq_y,sequence_length):
 
     return seq_y
 
-def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative=False):
+def preprocess_lstm(x,y,size,normalize=False,first_derivative=False,second_derivative=False):
 
     # Convert to numpy array
     x_np = np.array(x)
@@ -394,7 +394,7 @@ def preprocess_lstm(x,y,normalize=False,first_derivative=False,second_derivative
 
                     #step = 2 because: x,y,x,y,x,y,x,y
                     #40 because we are computing using 1st derivative input
-                    delta2_x[j] = x_np_delta[i][40 + j + 2] - x_np_delta[i][40 + j - 2]
+                    delta2_x[j] = x_np_delta[i][size + j + 2] - x_np_delta[i][size + j - 2]
 
                 x_np_delta2[i] = np.concatenate((x_np_delta[i], delta2_x))
 
@@ -637,14 +637,11 @@ def get_callabcks_list(output_path,percentage,training_percentage):
 
 def save_sequences(output_path, generator_train, generator_val):
 
-    models_all = glob(output_path + "/*.hdf5")
-    models_all.sort()
-
     x_val,y_val = consume_generator(generator_val)
     x_train, y_train = consume_generator(generator_train)
 
-    f1 = h5py.File("lstm_trainingset_complete.hdf5", 'w')
-    f2 = h5py.File("lstm_validationset_complete.hdf5", 'w')
+    f1 = h5py.File(output_path+"/lstm_trainingset_complete_normalized.hdf5", 'w')
+    f2 = h5py.File(output_path+"/lstm_validationset_complete_normalized.hdf5", 'w')
 
     f1.attrs['size'] = x_train.shape[0]
     # Creating dataset to store features

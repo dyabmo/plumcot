@@ -225,9 +225,9 @@ print(N_TRACKS)
 #         Y_PATHS_DEV,
 #        WEIGHTS_DIR)
 
-validate(X_PATHS_TEST,
-        Y_PATHS_TEST,
-        WEIGHTS_DIR)
+#validate(X_PATHS_TEST,
+#        Y_PATHS_TEST,
+#       WEIGHTS_DIR)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

@@ -33,7 +33,7 @@ SECOND_DERIVATIVE=False
 USE_FACE=True
 USE_AUDIO = True
 INPUT_DIMS = 40
-WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/one_out_of_ten_no_LCP_TopQuestions_face_audio'
+WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/face_derivatives_audio'
 
 if USE_FACE:
     INPUT_DIMS = 136
@@ -45,7 +45,7 @@ if FIRST_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
 
 if SECOND_DERIVATIVE:
-    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
+    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS//2
 
 if USE_AUDIO:
     INPUT_DIMS = INPUT_DIMS + 59
@@ -157,7 +157,11 @@ def get_generator(x_paths, y_paths, forever=True,x_paths_audio=None):
             #choose the minumum number of samples of both
             n_samples = min(X_normalized.shape[0],Xa.shape[0])
 
-            X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
+            if USE_FACE:
+                size = 136
+            else:
+                size = 40
+            X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,size,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
             #print(Xa.shape)
             #print(X.shape)
 
@@ -208,6 +212,7 @@ def train(x_paths, y_paths, weights_dir,x_paths_audio=None):
                       optimizer='rmsprop', metrics=['acc'])
 
     # train model
+    print(INPUT_DIMS)
     model_h5 = weights_dir + '/{epoch:04d}.h5'
     callbacks = [ModelCheckpoint(model_h5, period=1)]
     model.fit_generator(batch_generator, steps_per_epoch, epochs=1000,
@@ -216,7 +221,7 @@ def train(x_paths, y_paths, weights_dir,x_paths_audio=None):
 def validate(x_paths, y_paths, weights_dir,x_paths_audio=None):
 
     epoch = 0
-    f = open(WEIGHTS_DIR+"/list_test_prec_rec_auc",'w')
+    f = open(WEIGHTS_DIR+"/list_train_prec_rec_auc",'w')
     while True:
 
         # sleep until next epoch is finished
@@ -270,31 +275,26 @@ VALIDATION_Y_PATHS = Y_PATHS[9::STEP]
 VALIDATION_X_PATHS_AUDIO = X_PATHS_AUDIO[9::STEP]
 
 print(N_TRACKS)
-if USE_AUDIO:
+#if USE_AUDIO:
     #train(TRAINING_X_PATHS,
     #      TRAINING_Y_PATHS,
     #      WEIGHTS_DIR,
     #      TRAINING_X_PATHS_AUDIO)
 
-    #validate(TRAINING_X_PATHS,
-    #         TRAINING_Y_PATHS,
-    #         WEIGHTS_DIR,
-    #         TRAINING_X_PATHS_AUDIO)
-
-    #validate(VALIDATION_X_PATHS,
-    #         VALIDATION_Y_PATHS,
-    #         WEIGHTS_DIR,
-    #         VALIDATION_X_PATHS_AUDIO)
+#    validate(TRAINING_X_PATHS,
+#             TRAINING_Y_PATHS,
+#             WEIGHTS_DIR,
+#             TRAINING_X_PATHS_AUDIO)
 
     #validate(X_PATHS_DEV,
     #         Y_PATHS_DEV,
     #         WEIGHTS_DIR,
     #         X_PATHS_DEV_AUDIO)
 
-    validate(X_PATHS_TEST,
-            Y_PATHS_TEST,
-            WEIGHTS_DIR,
-             X_PATHS_TEST_AUDIO)
+    #validate(X_PATHS_TEST,
+    #        Y_PATHS_TEST,
+    #        WEIGHTS_DIR,
+    #         X_PATHS_TEST_AUDIO)
 
 #########################################################
 #train(X_PATHS[:LAST_TRACK],

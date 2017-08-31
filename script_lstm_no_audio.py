@@ -28,12 +28,12 @@ BATCH_SIZE = 32
 
 CATEGORICAL=False
 REMOVE_LCP_TOPQUESTIONS=True
-FIRST_DERIVATIVE=True
-SECOND_DERIVATIVE=True
-USE_FACE=False
+FIRST_DERIVATIVE=False
+SECOND_DERIVATIVE=False
+USE_FACE=True
 USE_AUDIO = False
 INPUT_DIMS = 40
-WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/derivatives'
+WEIGHTS_DIR = '/vol/work1/dyab/training_models/bredin/face_derivatives'
 
 if USE_FACE:
     INPUT_DIMS = 136
@@ -45,7 +45,7 @@ if FIRST_DERIVATIVE:
     INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
 
 if SECOND_DERIVATIVE:
-    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS
+    INPUT_DIMS=INPUT_DIMS + INPUT_DIMS//2
 
 if USE_AUDIO:
     INPUT_DIMS = INPUT_DIMS + 59
@@ -158,7 +158,12 @@ def get_generator(x_paths, y_paths, forever=True,x_paths_audio=None):
             n_samples = X_normalized.shape[0]
             #n_samples = min(X_normalized.shape[0],Xa.shape[0])
 
-            X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
+            if USE_FACE:
+                size = 136
+            else:
+                size = 40
+
+            X_normalized_deriv,_ = utils.preprocess_lstm(X_normalized,Y,size,normalize=False,first_derivative=FIRST_DERIVATIVE,second_derivative=SECOND_DERIVATIVE)
             #print(Xa.shape)
             #print(X.shape)
 
@@ -193,7 +198,7 @@ def train(x_paths, y_paths, weights_dir,x_paths_audio=None):
 
 
     batch_generator = batchify(generator, signature, batch_size=BATCH_SIZE)
-
+    print(INPUT_DIMS)
     # create model
     if CATEGORICAL:
         model = StackedLSTM()((25, INPUT_DIMS))
@@ -277,11 +282,7 @@ print(N_TRACKS)
 
 #validate(TRAINING_X_PATHS,
 #         TRAINING_Y_PATHS,
-#         WEIGHTS_DIR)
-
-#validate(VALIDATION_X_PATHS,
-#         VALIDATION_Y_PATHS,
-#         WEIGHTS_DIR)
+#        WEIGHTS_DIR)
 
 #validate(X_PATHS_DEV,
 #         Y_PATHS_DEV,
